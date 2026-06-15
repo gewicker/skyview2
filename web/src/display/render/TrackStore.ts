@@ -31,7 +31,7 @@ export class TrackStore {
       tr.lastSeen = now;
       const last = tr.hist[tr.hist.length - 1];
       if (!last || last.lat !== a.lat || last.lon !== a.lon) {
-        tr.hist.push({ t: now, lat: a.lat, lon: a.lon });
+        tr.hist.push({ t: now, lat: a.lat, lon: a.lon, alt: a.altBaro ?? a.altGeom });
       }
     }
     this.prune(now);
@@ -40,17 +40,22 @@ export class TrackStore {
   /** Resolve the visible set at render time (now - delay), interpolated, with trails. */
   sample(cfg: Config): Visible[] {
     const renderT = Date.now() - RENDER_DELAY_MS;
-    const trailMs = Math.max(0, (cfg.trailSeconds ?? 90) * 1000);
+    const baseMs = Math.max(0, (cfg.trailSeconds ?? 90) * 1000);
+    const extrapMs = Math.max(0, (cfg.maxExtrapolationSec ?? 5) * 1000);
     const out: Visible[] = [];
     for (const tr of this.tracks.values()) {
       if (!passesFilter(tr.latest, cfg)) continue;
-      const pos = interp(tr.hist, renderT);
+      const pos = interp(tr.hist, renderT, extrapMs);
       if (!pos) continue;
+      // Length scales with groundspeed (on top of the time window already making
+      // distance ∝ speed): fast traffic streaks, slow/parked traffic gets a stub.
+      const gs = tr.latest.gs ?? 0;
+      const winMs = Math.min(110_000, baseMs * clamp(gs / 220, 0.4, 1.3));
       const trail: Sample[] = [];
       for (const s of tr.hist) {
-        if (s.t >= renderT - trailMs && s.t <= renderT) trail.push(s);
+        if (s.t >= renderT - winMs && s.t <= renderT) trail.push(s);
       }
-      trail.push({ t: renderT, lat: pos.lat, lon: pos.lon }); // the comet head
+      trail.push({ t: renderT, lat: pos.lat, lon: pos.lon, alt: tr.latest.altBaro ?? tr.latest.altGeom }); // head
       out.push({ ...tr.latest, lat: pos.lat, lon: pos.lon, trail });
     }
     return out;
@@ -66,12 +71,21 @@ export class TrackStore {
   }
 }
 
-// Interpolate a position at t from the bracketing samples (clamp at the ends).
-function interp(hist: Sample[], t: number): { lat: number; lon: number } | null {
+// Position at t: interpolate between the two bracketing fixes; PAST the newest fix,
+// dead-reckon along the last segment's velocity (capped) so sparse/stale fixes glide
+// instead of freezing-then-jumping (the v1 behaviour — this kills the robotic look).
+function interp(hist: Sample[], t: number, extrapMs: number): { lat: number; lon: number } | null {
   if (hist.length === 0) return null;
-  if (hist.length === 1 || t <= hist[0].t) return hist[0];
+  if (t <= hist[0].t) return hist[0];
   const last = hist[hist.length - 1];
-  if (t >= last.t) return last;
+  if (t >= last.t) {
+    if (hist.length < 2 || extrapMs <= 0) return last;
+    const prev = hist[hist.length - 2];
+    const dt = last.t - prev.t;
+    if (dt <= 0) return last;
+    const k = Math.min(t - last.t, extrapMs) / dt; // capped extrapolation factor
+    return { lat: last.lat + (last.lat - prev.lat) * k, lon: last.lon + (last.lon - prev.lon) * k };
+  }
   for (let i = hist.length - 1; i > 0; i--) {
     const a = hist[i - 1], b = hist[i];
     if (t >= a.t && t <= b.t) {
@@ -80,6 +94,10 @@ function interp(hist: Sample[], t: number): { lat: number; lon: number } | null 
     }
   }
   return last;
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v;
 }
 
 function passesFilter(a: Aircraft, cfg: Config): boolean {

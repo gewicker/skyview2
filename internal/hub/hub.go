@@ -121,5 +121,5 @@ func (h *Hub) remove(c *client) {
 	h.mu.Lock()
 	delete(h.clients, c)
 	h.mu.Unlock()
-	_ = c.conn.CloseNow()
+	_ = c.conn.Close(websocket.StatusNormalClosure, "") // graceful (no TCP reset spam)
 }

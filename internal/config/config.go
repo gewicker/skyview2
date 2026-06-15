@@ -173,7 +173,7 @@ func Default() Config {
 		Palette: Palette{BG: "#05080d", Glyph: "#ff9a3c", Trail: "#cfd8e3",
 			Accent: "#39c2d8", Warn: "#ff5a4d", Grid: "#1d3a44", Text: "#dfe7f2"},
 		Fonts:       Fonts{Label: "system-ui, sans-serif", Mono: "ui-monospace, monospace"},
-		GlyphSizePx: 22, AltitudeColor: true, TrailMode: "altitude", TrailSeconds: 90,
+		GlyphSizePx: 22, AltitudeColor: true, TrailMode: "climb", TrailSeconds: 90,
 		TrailBoost: 0.5, Brightness: 1,
 		LabelDensity: "nearestN", NearestN: 8,
 		ShowFields: ShowFields{Airline: true, Flight: true, Type: true, Altitude: true,

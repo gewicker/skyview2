@@ -1,16 +1,18 @@
-// The render loop. Builds one Camera per frame from the live config, computes the
-// visible-aircraft set once, and hands a FrameContext to each layer in order.
-// Canvas2D-first; any Layer can later become WebGL behind the same interface.
-//
-// Phase 0: a placeholder pipeline (home dot + projected aircraft dots) that proves
-// the Web Mercator camera. Real layers (MapLayer, AircraftLayer, Spotlight, …) drop
-// in here as they're built.
-import { Camera } from "./mercator";
+// The render loop + interaction surface. Builds one Camera per frame from the live
+// config (or a transient pan/zoom override during interaction), computes the
+// interpolated visible set once, and hands a FrameContext to each layer.
+import { Camera, llToWorld, worldToLL } from "./mercator";
 import { TrackStore } from "./TrackStore";
 import type { Layer } from "./types";
 import type { Aircraft, Config } from "@shared/types";
 
 const MILE_M = 1609.34;
+
+interface View {
+  mapCenterLat: number;
+  mapCenterLon: number;
+  mapZoom: number;
+}
 
 export class Renderer {
   private raf = 0;
@@ -22,6 +24,11 @@ export class Renderer {
   private nextDue = 0;
   private layers: Layer[] = [];
   private ctx: CanvasRenderingContext2D;
+  private lastCam: Camera | null = null;
+  private override: View | null = null;     // transient view during pan/zoom
+  private selectedHex = "";
+  private releaseTimer = 0;
+  private lastInteractAt = 0;                // for the uncap + low-detail window
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -38,15 +45,20 @@ export class Renderer {
   start(): void {
     const loop = (now: number) => {
       this.raf = requestAnimationFrame(loop);
-      const fps = this.getConfig().maxFps;
-      if (fps > 0) {
-        const interval = 1000 / fps;
-        if (this.nextDue === 0) this.nextDue = now;
-        if (now < this.nextDue) return;
-        this.nextDue += interval;
-        if (now - this.nextDue > interval) this.nextDue = now + interval;
+      const interacting = now - this.lastInteractAt < 220;
+      if (interacting) {
+        this.nextDue = 0; // uncapped during a gesture (smooth pan on fast displays)
+      } else {
+        const fps = this.getConfig().maxFps;
+        if (fps > 0) {
+          const interval = 1000 / fps;
+          if (this.nextDue === 0) this.nextDue = now;
+          if (now < this.nextDue) return;
+          this.nextDue += interval;
+          if (now - this.nextDue > interval) this.nextDue = now + interval;
+        }
       }
-      this.draw(now);
+      this.draw(now, interacting);
     };
     this.raf = requestAnimationFrame(loop);
   }
@@ -62,9 +74,67 @@ export class Renderer {
     this.canvas.height = Math.round(this.h * this.dpr);
   }
 
-  private draw(now: number): void {
+  // --- interaction -------------------------------------------------------- //
+
+  /** The effective view: the transient override during a gesture, else config. */
+  view(): View {
+    if (this.override) return this.override;
+    const c = this.getConfig();
+    return { mapCenterLat: c.mapCenterLat, mapCenterLon: c.mapCenterLon, mapZoom: c.mapZoom || 1 };
+  }
+
+  /** Drag-pan by a pixel delta (content follows the finger). */
+  panByPixels(dx: number, dy: number): void {
+    this.lastInteractAt = performance.now();
+    if (!this.lastCam) return;
+    const v = this.view();
+    const c = this.lastCam.unproject(this.w / 2 - dx, this.h / 2 - dy);
+    this.override = { mapCenterLat: c.lat, mapCenterLon: c.lon, mapZoom: v.mapZoom };
+  }
+
+  /** Zoom by a factor, keeping the point under (px,py) fixed. */
+  zoomAt(factor: number, px: number, py: number): void {
+    this.lastInteractAt = performance.now();
+    const v = this.view();
+    let lat = v.mapCenterLat, lon = v.mapCenterLon;
+    if (this.lastCam) {
+      const cur = this.lastCam.unproject(px, py);
+      const curW = llToWorld(cur.lat, cur.lon);
+      const cW = llToWorld(lat, lon);
+      const n = worldToLL(curW.x + (cW.x - curW.x) / factor, curW.y + (cW.y - curW.y) / factor);
+      lat = n.lat; lon = n.lon;
+    }
+    this.override = { mapCenterLat: lat, mapCenterLon: lon, mapZoom: clamp(v.mapZoom * factor, 0.3, 14) };
+  }
+
+  /** Nearest aircraft to a screen point within a tap threshold, or null. */
+  pickAt(px: number, py: number): string | null {
+    if (!this.lastCam) return null;
+    const vis = this.store.sample(this.getConfig());
+    let best: string | null = null;
+    let bestD = 26 * 26;
+    for (const a of vis) {
+      const p = this.lastCam.project(a.lat, a.lon);
+      const d = (p.x - px) ** 2 + (p.y - py) ** 2;
+      if (d < bestD) { bestD = d; best = a.hex; }
+    }
+    return best;
+  }
+
+  select(hex: string | null): void { this.selectedHex = hex || ""; }
+  getView(): View { return this.view(); }
+
+  /** Drop the transient override shortly after a commit, so config takes over. */
+  scheduleRelease(ms = 700): void {
+    clearTimeout(this.releaseTimer);
+    this.releaseTimer = window.setTimeout(() => { this.override = null; }, ms);
+  }
+
+  // --- draw --------------------------------------------------------------- //
+
+  private draw(now: number, interacting = false): void {
     const cfg = this.getConfig();
-    if (!cfg) return; // config not yet arrived; skip the frame rather than throw
+    if (!cfg) return;
     const dt = this.prev ? (now - this.prev) / 1000 : 0.016;
     this.prev = now;
     if (this.canvas.clientWidth !== this.w || this.canvas.clientHeight !== this.h) this.resize();
@@ -74,26 +144,30 @@ export class Renderer {
     ctx.fillStyle = cfg.palette.bg;
     ctx.fillRect(0, 0, this.w, this.h);
 
+    const v = this.view();
     const cam = new Camera({
-      centerLat: cfg.mapCenterLat, centerLon: cfg.mapCenterLon,
-      zoom: this.zoomFor(cfg), rotationDeg: cfg.mapRotationDeg,
+      centerLat: v.mapCenterLat, centerLon: v.mapCenterLon,
+      zoom: this.zoomForMapZoom(v.mapZoom), rotationDeg: cfg.mapRotationDeg,
       mirrorX: cfg.mirrorX, mirrorY: cfg.mirrorY,
       screenW: this.w, screenH: this.h,
     });
+    this.lastCam = cam;
 
-    // Interpolated visible set at render time (1.15 s in the past), computed once.
     const visible = this.store.sample(cfg);
-    const f = { ctx, cam, cfg, t: now / 1000, dt, w: this.w, h: this.h, dpr: this.dpr, aircraft: visible };
-
+    const f = {
+      ctx, cam, cfg, t: now / 1000, dt, w: this.w, h: this.h, dpr: this.dpr,
+      aircraft: visible, view: v, selectedHex: this.selectedHex || undefined, interacting,
+    };
     for (const l of this.layers) l.draw(f);
   }
 
-  // Map the map-radius framing onto a fractional slippy zoom for the camera.
-  private zoomFor(cfg: Config): number {
-    const spanMi = 16 / (cfg.mapZoom || 1); // ~16 mi across at mapZoom 1
-    const spanM = spanMi * MILE_M;
-    const worldPerM = 1 / (2 * Math.PI * 6378137);
-    const worldSpan = spanM * worldPerM;
+  private zoomForMapZoom(mapZoom: number): number {
+    const spanMi = 16 / (mapZoom || 1);
+    const worldSpan = (spanMi * MILE_M) / (2 * Math.PI * 6378137);
     return Math.log2(this.w / (256 * worldSpan));
   }
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v;
 }

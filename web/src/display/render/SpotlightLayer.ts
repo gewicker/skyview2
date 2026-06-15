@@ -16,9 +16,30 @@ export class SpotlightLayer implements Layer {
   private until = 0;
 
   draw(f: FrameContext): void {
-    if (!f.cfg.showSpotlight) return;
     const sLat = f.cfg.spotlightLat ?? f.cfg.centerLat;
     const sLon = f.cfg.spotlightLon ?? f.cfg.centerLon;
+
+    // A manual tap selection wins over the auto-feature (and works even when the
+    // auto-spotlight is off), as long as the aircraft is still on screen.
+    if (f.selectedHex) {
+      const sel = f.aircraft.find((a) => a.hex === f.selectedHex);
+      if (sel) {
+        const ctx = f.ctx;
+        const p = f.cam.project(sel.lat, sel.lon);
+        const pulse = 0.5 + 0.5 * Math.sin(f.t * 3);
+        ctx.save();
+        ctx.strokeStyle = `rgba(57,194,216,${(0.45 + 0.4 * pulse).toFixed(3)})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 18 + 4 * pulse, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+        this.drawPlacard(f, sel, sLat, sLon);
+        return;
+      }
+    }
+
+    if (!f.cfg.showSpotlight) return;
     const radius = f.cfg.spotlightRadiusMi || 15;
     const now = f.t * 1000;
 
@@ -73,6 +94,10 @@ export class SpotlightLayer implements Layer {
     else if (a.altBaro != null) sub.push(Math.round(a.altBaro).toLocaleString() + " ft");
     if (sub.length) lines.push(sub.join("  ·  "));
     lines.push(`${d.toFixed(1)} mi ${compass(brg)}` + (a.destination ? `  ·  → ${a.destination}` : ""));
+    if (!a.onGround && a.altBaro != null) {
+      const elev = (Math.atan2(a.altBaro * 0.3048, Math.max(1, d * 1609.34)) * 180) / Math.PI;
+      lines.push(`LOOK ${compass(brg)} · ${Math.round(elev)}° UP`);
+    }
     const cpa = closestApproach(a, sLat, sLon);
     if (cpa && cpa.etaSec > 2 && cpa.etaSec < 600 && cpa.minMi < d) {
       lines.push(`closest ~${cpa.minMi.toFixed(1)} mi in ${Math.round(cpa.etaSec)}s`);
@@ -115,8 +140,9 @@ export class SpotlightLayer implements Layer {
     ctx.stroke();
     const ty = y + photoBlock + padY;
     for (let i = 0; i < lines.length; i++) {
-      ctx.fillStyle = i === 0 ? "rgba(238,243,250,0.98)" : i === lines.length - 1 && lines.length > 2 ? "rgba(57,194,216,0.92)" : "rgba(196,205,219,0.85)";
-      ctx.font = i === 0 ? "600 13px system-ui, sans-serif" : "12px system-ui, sans-serif";
+      const cyan = lines[i].startsWith("LOOK") || lines[i].startsWith("closest");
+      ctx.fillStyle = i === 0 ? "rgba(238,243,250,0.98)" : cyan ? "rgba(57,194,216,0.95)" : "rgba(196,205,219,0.85)";
+      ctx.font = i === 0 || cyan ? "600 12px system-ui, sans-serif" : "12px system-ui, sans-serif";
       ctx.fillText(lines[i], x + padX, ty + i * lh);
     }
     ctx.restore();
