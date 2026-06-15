@@ -46,6 +46,8 @@ export interface Aircraft {
   hex: string; flight?: string; lat?: number; lon?: number;
   altBaro?: number; altGeom?: number; gs?: number; track?: number; baroRate?: number;
   squawk?: string; seen: number;
+  onGround?: boolean; category?: string; selAlt?: number;
+  windSpd?: number; windDir?: number; oat?: number;
   typeCode?: string; typeName?: string; airline?: string; registration?: string;
   origin?: string; destination?: string; originName?: string; destName?: string;
   originLat?: number; originLon?: number; destLat?: number; destLon?: number;

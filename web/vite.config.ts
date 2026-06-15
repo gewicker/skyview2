@@ -7,6 +7,9 @@ import { resolve } from "node:path";
 // Go server on :3000.
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: { "@shared": resolve(__dirname, "src/shared") },
+  },
   build: {
     outDir: "../internal/httpd/dist",
     emptyOutDir: true,

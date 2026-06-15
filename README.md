@@ -48,6 +48,42 @@ make web        # vite build -> web/dist
 make pi         # cross-compile linux/arm64 with embedded assets -> bin/skyview
 ```
 
+## Data feed (ported from v1)
+
+The server polls the local decoder's `aircraft.json` (readsb / dump1090-fa schema)
+and normalizes it. Config via env (defaults match v1):
+
+```
+AIRCRAFT_JSON_URL=http://localhost:8080/data/aircraft.json   # radio feed
+POLL_MS=1000                                                 # radio poll cadence
+API_URL=https://api.airplanes.live/v2/point/{lat}/{lon}/{r}  # API supplement
+SUPPLEMENT_API=1                                             # merge API w/ radio
+API_POLL_MS=4000
+```
+
+The airplanes.live API-supplement merge (radio wins while fresh; API covers landing
+aircraft once the local fix goes stale) is carried as config and wired up optimally
+once the live setup is confirmed.
+
+## Provisioning & updates (pi-setup/)
+
+One-shot appliance install and hands-off updates, adapted to the single-binary model:
+
+- `install-on-pi.sh` — RTL-SDR driver + dump1090-fa decoder (aircraft.json on :8080),
+  then the SkyView binary + `skyview` systemd service + self-updater.
+- `setup-kiosk.sh` — full-screen Chromium kiosk at the display (monitor-only; no projector).
+- `skyview-updater` + `enable-auto-update.sh` — a 10-minute timer that fetches the
+  latest release binary, verifies its sha256, swaps it in, restarts, health-checks,
+  and rolls back on failure. `make release` builds the asset + checksum to upload.
+- `skyview` (CLI) — `status | logs | restart | update now | auto on/off | health | seal | wifi`.
+- `harden-pi.sh` — hardware watchdog, RAM-capped logs, a 2-minute self-heal, read-only seal.
+
+Dev → Pi (see `docs/REVISION-CONTROL-AND-UPDATES.md`):
+
+- `scripts/release.sh v2.0.0` — tag + cut a GitHub release; Pis on the github channel
+  auto-update within ~10 min (verify + swap + health-check + rollback).
+- `pi-setup/skyview-push.sh` — instant: cross-compile, scp the binary, restart, health-check.
+
 ## Status
 
 Phase 0 scaffold. Packages marked `[stub]` have interfaces + types but no

@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# SkyView self-updater. Driven by skyview-update.timer. Because v2 ships as ONE
+# static binary (web assets embedded), updating is a verified binary swap — far
+# simpler and safer than v1's build-on-device. Downloads the latest binary,
+# checks its sha256, atomically swaps it in, restarts, health-checks, and rolls
+# back to the previous binary if the new one fails to come up.
+#
+# Channels (set in /etc/skyview/update.conf):
+#   CHANNEL=github   poll the latest GitHub release, asset skyview-linux-arm64(+.sha256)
+#   CHANNEL=http     poll a manifest URL: {"version":..,"url":..,"sha256":..}
+# Safe to run by hand:  skyview update now
+set -uo pipefail
+
+CONF=/etc/skyview/update.conf
+[ -f "$CONF" ] && . "$CONF"
+CHANNEL="${CHANNEL:-github}"
+BIN="${BIN:-/usr/local/bin/skyview-server}"
+SERVICE="${SERVICE:-skyview}"
+REPO="${REPO:-gewicker/skyview2}"
+ASSET="${ASSET:-skyview-linux-arm64}"
+UPDATE_URL="${UPDATE_URL:-}"
+STATE=/var/lib/skyview
+sudo mkdir -p "$STATE" 2>/dev/null || mkdir -p "$STATE" 2>/dev/null || true
+
+log() { logger -t skyview-update "$*" 2>/dev/null || true; echo "[skyview-update] $*"; }
+health() { for _ in $(seq 1 30); do curl -fsS http://localhost:3000/api/health >/dev/null 2>&1 && return 0; sleep 2; done; return 1; }
+
+# --- resolve {version,url,sha256} for the channel ----------------------------- #
+resolve() { # echoes "version<TAB>url<TAB>sha256"
+  case "$CHANNEL" in
+    github)
+      local api="https://api.github.com/repos/$REPO/releases/latest"
+      curl -fsSL "$api" 2>/dev/null | python3 - "$ASSET" <<'PY'
+import sys, json
+asset = sys.argv[1]
+d = json.load(sys.stdin)
+ver = d.get("tag_name", "")
+url = sha = ""
+for a in d.get("assets", []):
+    if a["name"] == asset: url = a["browser_download_url"]
+    if a["name"] == asset + ".sha256": sha = a["browser_download_url"]
+print(f"{ver}\t{url}\t{sha}")
+PY
+      ;;
+    http)
+      [ -n "$UPDATE_URL" ] || { log "CHANNEL=http but UPDATE_URL unset"; return 2; }
+      curl -fsSL "$UPDATE_URL" 2>/dev/null | python3 -c \
+        'import sys,json;d=json.load(sys.stdin);print(d["version"]+"\t"+d["url"]+"\t"+d.get("sha256",""))'
+      ;;
+    *) log "unknown CHANNEL '$CHANNEL'"; return 1 ;;
+  esac
+}
+
+main() {
+  local row ver url sha
+  row="$(resolve)" || { log "resolve failed"; exit 1; }
+  ver="$(printf '%s' "$row" | cut -f1)"
+  url="$(printf '%s' "$row" | cut -f2)"
+  sha="$(printf '%s' "$row" | cut -f3)"
+  [ -n "$url" ] || { log "no download url"; exit 1; }
+
+  local cur; cur="$(cat "$STATE/version" 2>/dev/null || echo none)"
+  [ "$ver" = "$cur" ] && { log "up to date ($ver)"; exit 0; }
+  log "found $ver (current: $cur)"
+
+  curl -fsSL "$url" -o /tmp/skyview.new 2>/dev/null || { log "download failed"; exit 1; }
+  # Verify the checksum: a .sha256 URL (github) or the literal hash (http manifest).
+  local want=""
+  if [ -n "$sha" ] && printf '%s' "$sha" | grep -q '://'; then
+    want="$(curl -fsSL "$sha" 2>/dev/null | awk '{print $1}')"
+  else
+    want="$sha"
+  fi
+  if [ -n "$want" ]; then
+    echo "$want  /tmp/skyview.new" | sha256sum -c - >/dev/null 2>&1 \
+      || { log "checksum mismatch — refusing"; exit 1; }
+  fi
+  chmod +x /tmp/skyview.new
+
+  log "swapping in $ver"
+  cp -f "$BIN" "$STATE/skyview.prev" 2>/dev/null || true
+  sudo install -m755 /tmp/skyview.new "$BIN"
+  sudo systemctl restart "$SERVICE"
+  if health; then
+    printf '%s' "$ver" | sudo tee "$STATE/version" >/dev/null
+    log "update OK, server healthy ($ver)"
+    exit 0
+  fi
+  log "new build unhealthy — rolling back"
+  [ -f "$STATE/skyview.prev" ] && sudo install -m755 "$STATE/skyview.prev" "$BIN" && sudo systemctl restart "$SERVICE"
+  health && log "rolled back, healthy again" || log "ROLLBACK ALSO UNHEALTHY — check 'skyview logs'"
+  exit 1
+}
+main

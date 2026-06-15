@@ -17,6 +17,14 @@ type Aircraft struct {
 	BaroRate *float64 `json:"baroRate,omitempty"`
 	Squawk   string   `json:"squawk,omitempty"`
 	Seen     float64  `json:"seen"`
+	OnGround bool     `json:"onGround,omitempty"`
+	Category string   `json:"category,omitempty"` // ADS-B emitter category (e.g. A3, B2)
+	SelAlt   *float64 `json:"selAlt,omitempty"`   // selected/MCP altitude (final-approach cue)
+
+	// Decoder-derived Mode-S EHS fields — feed the winds-aloft overlay.
+	WindSpd *float64 `json:"windSpd,omitempty"` // kt
+	WindDir *float64 `json:"windDir,omitempty"` // deg FROM
+	OAT     *float64 `json:"oat,omitempty"`     // outside air temp, °C
 
 	// Enrichment (server-filled).
 	TypeCode     string   `json:"typeCode,omitempty"`

@@ -1,0 +1,15 @@
+[Unit]
+Description=SkyView 2 server
+After=network-online.target dump1090-json.service
+Wants=network-online.target
+
+[Service]
+User=__USER__
+ExecStart=__BIN__ -addr :3000 -data __DATA__
+Environment=AIRCRAFT_JSON_URL=http://localhost:8080/aircraft.json
+Environment=SUPPLEMENT_API=1
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -6,6 +6,7 @@
 // the Web Mercator camera. Real layers (MapLayer, AircraftLayer, Spotlight, …) drop
 // in here as they're built.
 import { Camera } from "./mercator";
+import { TrackStore } from "./TrackStore";
 import type { Layer } from "./types";
 import type { Aircraft, Config } from "@shared/types";
 
@@ -14,12 +15,13 @@ const MILE_M = 1609.34;
 export class Renderer {
   private raf = 0;
   private prev = 0;
-  private aircraft: Aircraft[] = [];
+  private store = new TrackStore();
   private w = 0;
   private h = 0;
   private dpr = 1;
   private nextDue = 0;
   private layers: Layer[] = [];
+  private ctx: CanvasRenderingContext2D;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -30,7 +32,6 @@ export class Renderer {
     this.ctx = ctx;
     this.resize();
   }
-  private ctx: CanvasRenderingContext2D;
 
   use(layer: Layer): void { this.layers.push(layer); }
 
@@ -51,7 +52,7 @@ export class Renderer {
   }
   stop(): void { cancelAnimationFrame(this.raf); }
 
-  update(aircraft: Aircraft[]): void { this.aircraft = aircraft; }
+  update(aircraft: Aircraft[]): void { this.store.ingest(aircraft); }
 
   resize(): void {
     this.dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
@@ -63,6 +64,7 @@ export class Renderer {
 
   private draw(now: number): void {
     const cfg = this.getConfig();
+    if (!cfg) return; // config not yet arrived; skip the frame rather than throw
     const dt = this.prev ? (now - this.prev) / 1000 : 0.016;
     this.prev = now;
     if (this.canvas.clientWidth !== this.w || this.canvas.clientHeight !== this.h) this.resize();
@@ -79,31 +81,11 @@ export class Renderer {
       screenW: this.w, screenH: this.h,
     });
 
-    const visible = this.aircraft.filter((a) => a.lat != null && a.lon != null);
+    // Interpolated visible set at render time (1.15 s in the past), computed once.
+    const visible = this.store.sample(cfg);
     const f = { ctx, cam, cfg, t: now / 1000, dt, w: this.w, h: this.h, dpr: this.dpr, aircraft: visible };
 
-    if (this.layers.length) {
-      for (const l of this.layers) l.draw(f);
-    } else {
-      this.placeholder(f.aircraft, cam, ctx, cfg);
-    }
-  }
-
-  // Until real layers land: home beacon + a dot per aircraft, proving the camera.
-  private placeholder(visible: Aircraft[], cam: Camera, ctx: CanvasRenderingContext2D, cfg: Config): void {
-    for (const a of visible) {
-      const p = cam.project(a.lat as number, a.lon as number);
-      ctx.fillStyle = cfg.palette.glyph;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    const home = cam.project(cfg.centerLat, cfg.centerLon);
-    ctx.strokeStyle = cfg.palette.accent;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(home.x, home.y, 6, 0, Math.PI * 2);
-    ctx.stroke();
+    for (const l of this.layers) l.draw(f);
   }
 
   // Map the map-radius framing onto a fractional slippy zoom for the camera.

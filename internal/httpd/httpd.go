@@ -44,9 +44,32 @@ func New(h *hub.Hub, cfg *store.Config) http.Handler {
 		writeJSON(w, cfg.Get())
 	})
 
-	// Static assets + SPA entry points, served from the embedded bundle.
+	mux.HandleFunc("/api/photo/", photoHandler)
+
+	// Static assets + the two MPA entry points (like v1's express.static + the two
+	// explicit routes). There is no SPA fallback: "/" serves the display and
+	// "/control" the phone panel; everything else resolves to a real embedded file.
 	sub, _ := fs.Sub(distFS, "dist")
-	mux.Handle("/", http.FileServer(http.FS(sub)))
+	files := http.FileServer(http.FS(sub))
+	serveFile := func(name string) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			b, err := fs.ReadFile(sub, name)
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write(b)
+		}
+	}
+	mux.HandleFunc("/control", serveFile("control.html"))
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			serveFile("index.html")(w, r)
+			return
+		}
+		files.ServeHTTP(w, r) // hashed /assets/*, control.html, etc.
+	})
 
 	return mux
 }

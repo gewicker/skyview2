@@ -26,9 +26,15 @@ type client struct {
 // Hub tracks connected clients and bridges them to the config store.
 type Hub struct {
 	cfg     *store.Config
+	prime   func() msg.ServerMessage // optional: latest snapshot to prime new clients
 	mu      sync.RWMutex
 	clients map[*client]struct{}
 }
+
+// SetPrime registers a source for the snapshot pushed to each new client on
+// connect (v1 primes config + the current aircraft list so the display isn't blank
+// until the next broadcast).
+func (h *Hub) SetPrime(fn func() msg.ServerMessage) { h.prime = fn }
 
 // New wires a hub to the config store and broadcasts config changes to all clients.
 func New(cfg *store.Config) *Hub {
@@ -52,6 +58,9 @@ func (h *Hub) Handle(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	cfg := h.cfg.Get()
 	cl.write(ctx, msg.ServerMessage{Type: "config", Config: &cfg})
+	if h.prime != nil {
+		cl.write(ctx, h.prime())
+	}
 
 	for {
 		var m msg.ClientMessage
