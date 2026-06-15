@@ -1,0 +1,21 @@
+# Go
+/bin/
+*.test
+*.out
+
+# Node / web
+web/node_modules/
+web/.vite/
+
+# Embedded build output (Vite writes here; keep the placeholder so go:embed compiles)
+internal/httpd/dist/*
+!internal/httpd/dist/.gitkeep
+
+# tygo codegen output (the hand-written web/src/shared/types.ts is committed for now)
+web/src/shared/generated/
+
+# Local data + secrets
+/data/
+*.local
+.env
+.DS_Store

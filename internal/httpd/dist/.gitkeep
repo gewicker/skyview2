@@ -1,0 +1,2 @@
+Placeholder so go:embed compiles before the first `make web`.
+The Vite build overwrites this directory with the real bundle.

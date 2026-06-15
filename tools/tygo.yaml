@@ -1,0 +1,14 @@
+# Generates TypeScript types from the Go source of truth so the server and web app
+# can't drift. Run via `make types`. For now the web app imports a hand-written
+# web/src/shared/types.ts (kept in sync by hand); once the schema settles, switch the
+# app to import from web/src/shared/generated/ and delete the hand-written file.
+packages:
+  - path: "github.com/gewicker/skyview2/internal/config"
+    output_path: "web/src/shared/generated/config.ts"
+  - path: "github.com/gewicker/skyview2/internal/aircraft"
+    output_path: "web/src/shared/generated/aircraft.ts"
+  - path: "github.com/gewicker/skyview2/internal/msg"
+    output_path: "web/src/shared/generated/msg.ts"
+    frontmatter: |
+      import type { Config } from "./config";
+      import type { Aircraft } from "./aircraft";
