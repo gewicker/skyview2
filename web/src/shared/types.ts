@@ -47,7 +47,7 @@ export interface Config {
 export interface Aircraft {
   hex: string; flight?: string; lat?: number; lon?: number;
   altBaro?: number; altGeom?: number; gs?: number; track?: number; baroRate?: number;
-  squawk?: string; seen: number;
+  squawk?: string; seen: number; seenPos?: number;
   onGround?: boolean; category?: string; selAlt?: number;
   fmsAlt?: number; selHeading?: number; navQNH?: number; navModes?: string[];
   windSpd?: number; windDir?: number; oat?: number;

@@ -174,7 +174,7 @@ type Config struct {
 // Default returns the baseline config (Bellevue / Sea-Tac corridor).
 func Default() Config {
 	return Config{
-		CenterLat: 47.617, CenterLon: -122.1936, RadiusMiles: 22,
+		CenterLat: 47.618431, CenterLon: -122.191076, RadiusMiles: 22, // home: 909 112th Ave NE, Bellevue
 		Zoom: 2.5,
 		MapZoom: 1, MapCenterLat: 47.585, MapCenterLon: -122.255, MapRotationDeg: 270, // East up (faces 405)
 		MaxExtrapolationSec: 8, StaleSec: 30, MaxFps: 24, RenderScale: 1, Interpolate: true,
@@ -191,7 +191,7 @@ func Default() Config {
 		ShowHome: true, ShowRelative: true, HighlightEmergency: true,
 		ShowNotable: true, NotableFlash: true, ShowWinds: true, ShowPhotos: true,
 		ShowDestArc: true, ShowRouteDetail: true, BurnInOrbit: false, // IPS panel — no burn-in risk
-		ShowSpotlight: true, SpotlightRadiusMi: 15, SpotlightLat: 47.617, SpotlightLon: -122.1936,
+		ShowSpotlight: true, SpotlightRadiusMi: 15, SpotlightLat: 47.618431, SpotlightLon: -122.191076,
 		ShowStars: true, ShowSun: true, ShowMoon: true, ShowSatellites: true,
 		StarMagLimit: 2.6,
 		ProcRasterOpacity: 0.5, // overlays off by default; opacity used when raster enabled

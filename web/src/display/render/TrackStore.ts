@@ -6,11 +6,12 @@
 import type { Aircraft, Config } from "@shared/types";
 import type { Sample, Visible } from "./types";
 
-const RENDER_DELAY_MS = 1100; // render ~1.1 s in the past — enough to stay BETWEEN two real
-                              // fixes now that the server pushes each write within ~250 ms
-                              // (lower = more responsive; too low = extrapolation/rubberband)
-const MAX_EXTRAP_MS = 1200;   // hard cap on forward dead-reckoning — bounds the snap-back
-                              // ("rubberband") when a late fix lands behind the guess
+const RENDER_DELAY_MS = 1200; // render ~1.2 s behind the measurement timeline — keeps us
+                              // INTERPOLATING between two real fixes (smooth) almost always
+const MAX_EXTRAP_MS = 700;    // when a track does go stale, gently PREDICT forward along its
+                              // last velocity; the low-pass then glides the correction in when
+                              // the next fix lands, so prediction never snaps ("smooth + fairly
+                              // accurate" — straight flight predicts perfectly; turns ease in)
 
 interface Track {
   latest: Aircraft;
@@ -27,7 +28,8 @@ interface Track {
   transitLon?: number;
 }
 
-const SMOOTH_TAU = 0.16; // s — low-pass time constant; damps the per-fix kink & GPS jitter (lower = snappier)
+const SMOOTH_TAU = 0.2; // s — low-pass time constant; damps the per-fix kink, GPS jitter, and
+                        // eases prediction corrections so nothing snaps (higher = smoother/softer)
 
 export class TrackStore {
   private tracks = new Map<string, Track>();
@@ -55,15 +57,18 @@ export class TrackStore {
         tr.prevGround = isGround; tr.groundSince = now;
       }
       const last = tr.hist[tr.hist.length - 1];
-      // Decimate to cap growth on the Pi, but keep GROUND traffic much finer — a taxiing
-      // aircraft only moves a few metres a second, so the airborne ~38 m threshold dropped
-      // most of its motion and made it step. ~4 m + a 1.5 s refresh captures smooth taxiing.
+      // Stamp each fix by when its POSITION was actually MEASURED (now − seen_pos), NOT by
+      // arrival time. This builds a regular, measurement-aligned timeline that's immune to
+      // network/poll jitter — the key to smooth interpolation. (Falls back to `now` when the
+      // decoder doesn't report seen_pos.)
+      const fixT = now - (a.seenPos ?? 0) * 1000;
+      // Decimate to cap growth, but keep GROUND traffic finer (taxiing moves a few m/s).
       const MOVE2 = isGround ? 1.5e-9 : 1.2e-7; // ≈ 4 m on the ground vs ≈ 38 m airborne
       const ageMs = isGround ? 1500 : 4000;
       const moved = !last || (last.lat - a.lat) ** 2 + (last.lon - a.lon) ** 2 > MOVE2;
-      const aged = last && now - last.t > ageMs;
-      if (moved || aged) {
-        tr.hist.push({ t: now, lat: a.lat, lon: a.lon, alt: a.altBaro ?? a.altGeom });
+      const aged = last && fixT - last.t > ageMs;
+      if ((moved || aged) && (!last || fixT > last.t)) { // keep the timeline strictly increasing
+        tr.hist.push({ t: fixT, lat: a.lat, lon: a.lon, alt: a.altBaro ?? a.altGeom });
         if (tr.hist.length > 700) tr.hist.shift();
       }
     }

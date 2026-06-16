@@ -17,6 +17,7 @@ type Aircraft struct {
 	BaroRate *float64 `json:"baroRate,omitempty"`
 	Squawk   string   `json:"squawk,omitempty"`
 	Seen     float64  `json:"seen"`
+	SeenPos  *float64 `json:"seenPos,omitempty"` // seconds since this POSITION was measured — lets the client build a jitter-free, measurement-aligned motion timeline
 	OnGround bool     `json:"onGround,omitempty"`
 	Category string   `json:"category,omitempty"` // ADS-B emitter category (e.g. A3, B2)
 

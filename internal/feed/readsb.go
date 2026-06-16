@@ -32,6 +32,7 @@ type rawAircraft struct {
 	Reg      string          `json:"r"`
 	Type     string          `json:"t"`
 	Seen     float64         `json:"seen"`
+	SeenPos  *float64        `json:"seen_pos"` // age of the latest POSITION, seconds
 	Category string          `json:"category"`
 	SelAlt   *float64        `json:"nav_altitude_mcp"`
 	FMSAlt   *float64        `json:"nav_altitude_fms"`
@@ -66,6 +67,7 @@ func normalize(raw rawAircraft) *aircraft.Aircraft {
 		Registration: raw.Reg,
 		TypeCode:     raw.Type,
 		Seen:         raw.Seen,
+		SeenPos:      raw.SeenPos,
 		Category:     raw.Category,
 		SelAlt:       raw.SelAlt,
 		FMSAlt:       raw.FMSAlt,
