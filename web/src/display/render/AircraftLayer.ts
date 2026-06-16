@@ -157,10 +157,14 @@ function drawLabels(ctx: CanvasRenderingContext2D, jobs: LabelJob[], f: FrameCon
 function drawLabel(ctx: CanvasRenderingContext2D, lines: string[], x: number, cy: number, maxW: number): void {
   const n = lines.length;
   const top = cy - ((n - 1) * LINE_H) / 2;
-  // Darker, more opaque plate for contrast over busy satellite imagery.
-  ctx.fillStyle = "rgba(8,12,18,0.7)";
+  // Soft translucent slate plate (not pure black) with a hairline border. The
+  // per-line dark outline below carries the contrast, so the box can stay light.
   roundRect(ctx, x - 5, top - LINE_H / 2 - 2, maxW + 10, n * LINE_H + 4, 5);
+  ctx.fillStyle = "rgba(26,34,48,0.5)";
   ctx.fill();
+  ctx.strokeStyle = "rgba(160,178,200,0.22)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
   ctx.lineJoin = "round";
   for (let i = 0; i < n; i++) {
     const y = top + i * LINE_H;
