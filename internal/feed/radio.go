@@ -42,7 +42,7 @@ type Options struct {
 func DefaultOptions() Options {
 	return Options{
 		RadioURL:        "http://localhost:8080/aircraft.json",
-		PollInterval:    time.Second,
+		PollInterval:    500 * time.Millisecond, // 2×/s: catch each 1 Hz JSON write promptly (lower latency, steadier fixes)
 		APIURLTemplate:  "https://api.airplanes.live/v2/point/{lat}/{lon}/{r}",
 		SupplementAPI:   true,
 		APIPollInterval: 4 * time.Second,

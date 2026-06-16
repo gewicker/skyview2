@@ -41,6 +41,9 @@ type rawAircraft struct {
 	WindSpd  *float64        `json:"ws"`
 	WindDir  *float64        `json:"wd"`
 	OAT      *float64        `json:"oat"`
+	IAS      *float64        `json:"ias"`
+	TAS      *float64        `json:"tas"`
+	Mach     *float64        `json:"mach"`
 }
 
 func ptr(f float64) *float64 { return &f }
@@ -72,6 +75,9 @@ func normalize(raw rawAircraft) *aircraft.Aircraft {
 		WindSpd:      raw.WindSpd,
 		WindDir:      raw.WindDir,
 		OAT:          raw.OAT,
+		IAS:          raw.IAS,
+		TAS:          raw.TAS,
+		Mach:         raw.Mach,
 	}
 	// alt_baro: "ground" -> nil + onGround flag; otherwise the numeric altitude.
 	if len(raw.AltBaro) > 0 && string(raw.AltBaro) == `"ground"` {

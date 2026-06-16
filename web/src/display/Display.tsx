@@ -370,6 +370,11 @@ function TapCard({ a, cfg, onClose }: { a: Aircraft; cfg: Config; onClose: () =>
     rows.push(["Altitude", `${Math.round(a.altBaro).toLocaleString()} ft${arr}`]);
   }
   if (a.gs != null) rows.push(["Ground speed", `${Math.round(a.gs)} kt`]);
+  const air: string[] = [];
+  if (a.tas != null) air.push(`${Math.round(a.tas)} kt TAS`);
+  if (a.ias != null) air.push(`${Math.round(a.ias)} IAS`);
+  if (a.mach != null) air.push(`M${a.mach.toFixed(2)}`);
+  if (air.length) rows.push(["Airspeed", air.join("  ·  ")]);
   if (a.track != null) rows.push(["Track", `${Math.round(a.track)}°`]);
   if (a.baroRate != null && !a.onGround) rows.push(["Vertical rate", `${a.baroRate > 0 ? "+" : ""}${Math.round(a.baroRate)} fpm`]);
   const ap: string[] = [];

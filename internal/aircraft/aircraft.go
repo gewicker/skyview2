@@ -32,6 +32,9 @@ type Aircraft struct {
 	WindSpd *float64 `json:"windSpd,omitempty"` // kt
 	WindDir *float64 `json:"windDir,omitempty"` // deg FROM
 	OAT     *float64 `json:"oat,omitempty"`     // outside air temp, °C
+	IAS     *float64 `json:"ias,omitempty"`     // indicated airspeed, kt (Mode-S EHS)
+	TAS     *float64 `json:"tas,omitempty"`     // true airspeed, kt
+	Mach    *float64 `json:"mach,omitempty"`    // Mach number
 
 	// Enrichment (server-filled).
 	TypeCode     string   `json:"typeCode,omitempty"`

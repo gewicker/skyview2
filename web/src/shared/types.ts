@@ -49,6 +49,7 @@ export interface Aircraft {
   onGround?: boolean; category?: string; selAlt?: number;
   fmsAlt?: number; selHeading?: number; navQNH?: number; navModes?: string[];
   windSpd?: number; windDir?: number; oat?: number;
+  ias?: number; tas?: number; mach?: number;
   typeCode?: string; typeName?: string; airline?: string; registration?: string;
   origin?: string; destination?: string; originName?: string; destName?: string;
   originLat?: number; originLon?: number; destLat?: number; destLon?: number;
