@@ -34,6 +34,10 @@ type rawAircraft struct {
 	Seen     float64         `json:"seen"`
 	Category string          `json:"category"`
 	SelAlt   *float64        `json:"nav_altitude_mcp"`
+	FMSAlt   *float64        `json:"nav_altitude_fms"`
+	NavHdg   *float64        `json:"nav_heading"`
+	NavQNH   *float64        `json:"nav_qnh"`
+	NavModes []string        `json:"nav_modes"`
 	WindSpd  *float64        `json:"ws"`
 	WindDir  *float64        `json:"wd"`
 	OAT      *float64        `json:"oat"`
@@ -61,6 +65,10 @@ func normalize(raw rawAircraft) *aircraft.Aircraft {
 		Seen:         raw.Seen,
 		Category:     raw.Category,
 		SelAlt:       raw.SelAlt,
+		FMSAlt:       raw.FMSAlt,
+		SelHeading:   raw.NavHdg,
+		NavQNH:       raw.NavQNH,
+		NavModes:     raw.NavModes,
 		WindSpd:      raw.WindSpd,
 		WindDir:      raw.WindDir,
 		OAT:          raw.OAT,

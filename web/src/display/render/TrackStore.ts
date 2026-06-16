@@ -30,8 +30,14 @@ export class TrackStore {
       tr.latest = a;
       tr.lastSeen = now;
       const last = tr.hist[tr.hist.length - 1];
-      if (!last || last.lat !== a.lat || last.lon !== a.lon) {
+      // Decimate: keep a fix only if it moved a meaningful distance OR enough time
+      // passed (so we still record slow turns). Caps unbounded growth on the Pi.
+      const MOVE2 = 1.2e-7; // ~ (0.00035°)² ≈ 30 m
+      const moved = !last || (last.lat - a.lat) ** 2 + (last.lon - a.lon) ** 2 > MOVE2;
+      const aged = last && now - last.t > 4000;
+      if (moved || aged) {
         tr.hist.push({ t: now, lat: a.lat, lon: a.lon, alt: a.altBaro ?? a.altGeom });
+        if (tr.hist.length > 700) tr.hist.shift();
       }
     }
     this.prune(now);

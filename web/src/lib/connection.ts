@@ -95,6 +95,10 @@ export class Connection {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(m));
   }
   patchConfig(patch: Partial<Config>): void { this.send({ type: "patchConfig", patch }); }
+  resetConfig(): void { this.send({ type: "resetConfig" }); }
+  saveScene(name: string, config?: Config): void { this.send({ type: "saveScene", name, ...(config ? { config } : {}) }); }
+  applyScene(name: string): void { this.send({ type: "applyScene", name }); }
+  deleteScene(name: string): void { this.send({ type: "deleteScene", name }); }
 
   subscribe(fn: Listener): () => void {
     this.listeners.add(fn); fn(this.state);

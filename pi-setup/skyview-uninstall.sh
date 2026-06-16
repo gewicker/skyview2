@@ -16,14 +16,17 @@ fi
 
 echo "==> stop + disable services"
 for u in skyview skyview-update.timer skyview-update.service \
-         skyview-selfheal.timer skyview-selfheal.service; do
+         skyview-selfheal.timer skyview-selfheal.service \
+         skyview-onboard.timer skyview-onboard.service; do
   sudo systemctl disable --now "$u" 2>/dev/null || true
 done
+nmcli con down "SkyView-setup" 2>/dev/null || true
 
 echo "==> remove unit files + drop-ins"
 sudo rm -f /etc/systemd/system/skyview.service \
   /etc/systemd/system/skyview-update.service /etc/systemd/system/skyview-update.timer \
   /etc/systemd/system/skyview-selfheal.service /etc/systemd/system/skyview-selfheal.timer \
+  /etc/systemd/system/skyview-onboard.service /etc/systemd/system/skyview-onboard.timer \
   /etc/systemd/system.conf.d/10-skyview-watchdog.conf \
   /etc/systemd/journald.conf.d/10-skyview.conf
 sudo systemctl daemon-reload
@@ -31,8 +34,10 @@ sudo systemctl restart systemd-journald 2>/dev/null || true
 
 echo "==> remove binaries, config, state, mDNS"
 sudo rm -f /usr/local/bin/skyview /usr/local/bin/skyview-server \
-  /usr/local/bin/skyview-updater /usr/local/bin/skyview-selfheal /usr/local/bin/skyview-harden
-sudo rm -rf /etc/skyview /var/lib/skyview /run/skyview
+  /usr/local/bin/skyview-updater /usr/local/bin/skyview-selfheal /usr/local/bin/skyview-harden \
+  /usr/local/bin/skyview-switch /usr/local/bin/skyview-display-power /usr/local/bin/skyview-onboard
+sudo rm -rf /etc/skyview /var/lib/skyview /run/skyview /etc/default/skyview
+sudo rm -f /boot/firmware/skyview-status.txt
 sudo rm -f /etc/avahi/services/skyview.service
 sudo systemctl restart avahi-daemon 2>/dev/null || true
 

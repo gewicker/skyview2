@@ -4,7 +4,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"flag"
 	"log"
 	"net/http"
@@ -42,7 +44,9 @@ func main() {
 	}
 
 	cfg := store.NewConfig(filepath.Join(*dataDir, "config.json"))
-	h := hub.New(cfg)
+	scenes := store.NewScenes(filepath.Join(*dataDir, "scenes.json"))
+	notable := store.NewNotable(func(ev msg.NotableEvent) { postWebhook(cfg.Get().NotableWebhook, ev) })
+	h := hub.New(cfg, scenes, notable)
 
 	// --- data sources (config ported from v1; env-overridable) ----------------- //
 	opts := feed.DefaultOptions()
@@ -60,20 +64,28 @@ func main() {
 			return feed.View{Lat: c.CenterLat, Lon: c.CenterLon, RadiusMiles: c.RadiusMiles}
 		})
 	}
-
 	enr := enrich.New(filepath.Join(*dataDir, "route-cache.json"), envFloat("ROUTE_CACHE_HOURS", 12))
 
-	// Latest enriched snapshot, for the on-connect prime.
 	var lastMu sync.Mutex
 	var lastNow float64
 	var lastList []aircraft.Aircraft
-	h.SetPrime(func() msg.ServerMessage {
+	snapshot := func() (float64, []aircraft.Aircraft) {
 		lastMu.Lock()
 		defer lastMu.Unlock()
-		return msg.ServerMessage{Type: "aircraft", Now: lastNow, Aircraft: lastList}
+		return lastNow, lastList
+	}
+	h.SetPrime(func() msg.ServerMessage {
+		n, ac := snapshot()
+		return msg.ServerMessage{Type: "aircraft", Now: n, Aircraft: ac}
 	})
+	status := func() msg.SourceStatus {
+		_, ac := snapshot()
+		return msg.SourceStatus{OK: true, Source: "radio", Count: len(ac)}
+	}
 
-	srv := &http.Server{Addr: *addr, Handler: httpd.New(h, cfg)}
+	srv := &http.Server{Addr: *addr, Handler: httpd.New(httpd.Deps{
+		Hub: h, Cfg: cfg, Scenes: scenes, Notable: notable, Snapshot: snapshot, Status: status,
+	})}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -85,7 +97,6 @@ func main() {
 	go enr.Run(ctx)
 	log.Printf("feed: radio %s every %s (api supplement: %v)", opts.RadioURL, opts.PollInterval, opts.SupplementAPI)
 
-	// Pipeline: every tick, merge radio+API, enrich, broadcast.
 	go func() {
 		t := time.NewTicker(opts.PollInterval)
 		defer t.Stop()
@@ -100,6 +111,7 @@ func main() {
 					list = feed.MergeSources(list, apiSrc.Latest().Aircraft)
 				}
 				list = enr.Process(list, int64(now))
+				notable.Observe(list, int64(now))
 				lastMu.Lock()
 				lastNow, lastList = now, list
 				lastMu.Unlock()
@@ -117,12 +129,32 @@ func main() {
 
 	<-ctx.Done()
 	log.Println("shutting down…")
-	if err := cfg.Flush(); err != nil { // flush the last config edit (a v1 bug this fixes)
+	if err := cfg.Flush(); err != nil {
 		log.Printf("config flush: %v", err)
 	}
 	shutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(shutCtx)
+}
+
+func postWebhook(url string, ev msg.NotableEvent) {
+	if url == "" {
+		return
+	}
+	b, err := json.Marshal(ev)
+	if err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if resp, err := http.DefaultClient.Do(req); err == nil {
+		_ = resp.Body.Close()
+	}
 }
 
 func env(key, def string) string {

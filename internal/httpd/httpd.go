@@ -1,6 +1,5 @@
 // Package httpd serves the REST API and the embedded web app. The built Vite bundle
 // is compiled into the binary (go:embed dist), so deployment is a single file.
-// Vite is configured to output into internal/httpd/dist (see web/vite.config.ts).
 package httpd
 
 import (
@@ -9,19 +8,37 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"os/exec"
+	"runtime"
+	"time"
 
+	"github.com/gewicker/skyview2/internal/aircraft"
 	"github.com/gewicker/skyview2/internal/hub"
+	"github.com/gewicker/skyview2/internal/msg"
 	"github.com/gewicker/skyview2/internal/store"
 )
 
 //go:embed all:dist
 var distFS embed.FS
 
+// Process start time, reported by /api/diag as uptime.
+var startedAt = time.Now()
+
+// Deps are the server's collaborators.
+type Deps struct {
+	Hub      *hub.Hub
+	Cfg      *store.Config
+	Scenes   *store.Scenes
+	Notable  *store.Notable
+	Snapshot func() (float64, []aircraft.Aircraft)
+	Status   func() msg.SourceStatus
+}
+
 // New builds the HTTP handler: WS, REST, and the embedded SPA.
-func New(h *hub.Hub, cfg *store.Config) http.Handler {
+func New(d Deps) http.Handler {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/ws", h.Handle)
+	mux.HandleFunc("/ws", d.Hub.Handle)
 
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]bool{"ok": true})
@@ -30,25 +47,88 @@ func New(h *hub.Hub, cfg *store.Config) http.Handler {
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			writeJSON(w, cfg.Get())
+			writeJSON(w, d.Cfg.Get())
 		case http.MethodPost:
 			body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-			writeJSON(w, cfg.Patch(body))
+			writeJSON(w, d.Cfg.Patch(body))
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
-
 	mux.HandleFunc("/api/config/reset", func(w http.ResponseWriter, r *http.Request) {
-		cfg.Reset()
-		writeJSON(w, cfg.Get())
+		d.Cfg.Reset()
+		writeJSON(w, d.Cfg.Get())
+	})
+
+	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, d.Status()) })
+	mux.HandleFunc("/api/aircraft", func(w http.ResponseWriter, r *http.Request) {
+		now, ac := d.Snapshot()
+		writeJSON(w, map[string]any{"now": now, "aircraft": ac})
+	})
+	mux.HandleFunc("/api/notable", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, d.Notable.List()) })
+
+	// Diagnostics: feed health + live counts + runtime stats (for the Pi and dev).
+	mux.HandleFunc("/api/diag", func(w http.ResponseWriter, r *http.Request) {
+		now, ac := d.Snapshot()
+		var ms runtime.MemStats
+		runtime.ReadMemStats(&ms)
+		writeJSON(w, map[string]any{
+			"now":        now,
+			"aircraft":   len(ac),
+			"source":     d.Status(),
+			"goroutines": runtime.NumGoroutine(),
+			"allocMB":    ms.Alloc / (1 << 20),
+			"numGC":      ms.NumGC,
+			"uptimeSec":  time.Since(startedAt).Seconds(),
+			"goVersion":  runtime.Version(),
+		})
+	})
+
+	// Scenes.
+	mux.HandleFunc("GET /api/scenes", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, d.Scenes.List()) })
+	mux.HandleFunc("POST /api/scenes", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Name string `json:"name"`
+		}
+		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body)
+		d.Scenes.Save(body.Name, d.Cfg.Get())
+		writeJSON(w, d.Scenes.List())
+	})
+	mux.HandleFunc("POST /api/scenes/{name}/apply", func(w http.ResponseWriter, r *http.Request) {
+		if c, ok := d.Scenes.Apply(r.PathValue("name")); ok {
+			d.Cfg.Set(c)
+			writeJSON(w, d.Cfg.Get())
+			return
+		}
+		http.NotFound(w, r)
+	})
+	mux.HandleFunc("DELETE /api/scenes/{name}", func(w http.ResponseWriter, r *http.Request) {
+		d.Scenes.Delete(r.PathValue("name"))
+		writeJSON(w, d.Scenes.List())
 	})
 
 	mux.HandleFunc("/api/photo/", photoHandler)
+	mux.HandleFunc("/api/metar", metarHandler)
 
-	// Static assets + the two MPA entry points (like v1's express.static + the two
-	// explicit routes). There is no SPA fallback: "/" serves the display and
-	// "/control" the phone panel; everything else resolves to a real embedded file.
+	// Relaunch the kiosk (Pi); best-effort, no-op elsewhere.
+	mux.HandleFunc("POST /api/kiosk/restart", func(w http.ResponseWriter, r *http.Request) {
+		_ = exec.Command("pkill", "-f", "/usr/lib/chromium").Run()
+		writeJSON(w, map[string]bool{"ok": true})
+	})
+
+	// Display power for the lights-out sleep schedule. Delegates to a small Pi script
+	// (skyview-display-power on|off) that knows the compositor's blanking command;
+	// best-effort, no-op where the script is absent.
+	mux.HandleFunc("POST /api/display/power", func(w http.ResponseWriter, r *http.Request) {
+		arg := "on"
+		if r.URL.Query().Get("on") == "0" {
+			arg = "off"
+		}
+		_ = exec.Command("skyview-display-power", arg).Run()
+		writeJSON(w, map[string]bool{"ok": true})
+	})
+
+	// Static assets + the two MPA entry points (no SPA fallback, like v1).
 	sub, _ := fs.Sub(distFS, "dist")
 	files := http.FileServer(http.FS(sub))
 	serveFile := func(name string) http.HandlerFunc {
@@ -62,13 +142,12 @@ func New(h *hub.Hub, cfg *store.Config) http.Handler {
 			_, _ = w.Write(b)
 		}
 	}
-	mux.HandleFunc("/control", serveFile("control.html"))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
 			serveFile("index.html")(w, r)
 			return
 		}
-		files.ServeHTTP(w, r) // hashed /assets/*, control.html, etc.
+		files.ServeHTTP(w, r)
 	})
 
 	return mux

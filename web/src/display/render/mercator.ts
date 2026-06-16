@@ -60,6 +60,13 @@ export class Camera {
     return Math.max(min, Math.min(max, Math.round(this.o.zoom)));
   }
 
+  /** A clone with a different screen size — same centre/scale/rotation. Used to
+   *  rasterize the basemap into an oversized buffer so pan/zoom-out reveal already
+   *  rendered map instead of blank margins. */
+  withScreen(screenW: number, screenH: number): Camera {
+    return new Camera({ ...this.o, screenW, screenH });
+  }
+
   /** lat/lon -> screen pixel. */
   project(lat: number, lon: number): Point {
     const w = llToWorld(lat, lon);

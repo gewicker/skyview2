@@ -4,18 +4,40 @@
 // signature SkyView touch.
 import type { Layer, FrameContext, Visible } from "./types";
 import { getPhoto } from "./photos";
+import { sunPosition, altAz } from "./sun";
 
 const DEG = Math.PI / 180;
 const R_MI = 3958.8;
 const KT_MS = 0.514444;
 const HOLD_MS = 6000;
+const RING_CYAN: [number, number, number] = [57, 194, 216];
+const RING_GOLD: [number, number, number] = [255, 184, 92];
 
 export class SpotlightLayer implements Layer {
   readonly name = "spotlight";
   private hex = "";
   private until = 0;
+  private sunAt = 0;
+  private sunAlt = 45;
+  private golden = 0; // 0..1, peaks as the sun crosses the horizon
+
+  // Recompute the golden-hour factor every ~20 s (sun moves slowly).
+  private updateGolden(f: FrameContext): void {
+    const wall = Date.now();
+    if (wall - this.sunAt < 20000) return;
+    this.sunAt = wall;
+    const date = new Date(wall + (f.cfg.skyTimeOffsetMin || 0) * 60000);
+    this.sunAlt = altAz(sunPosition(date), f.cfg.centerLat, f.cfg.centerLon).alt;
+    this.golden = this.sunAlt < 8 && this.sunAlt > -6 ? clamp(1 - Math.abs(this.sunAlt) / 7, 0, 1) : 0;
+  }
+
+  private ring(a: number): string {
+    const c = lerpRGB(RING_CYAN, RING_GOLD, this.golden);
+    return `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a.toFixed(3)})`;
+  }
 
   draw(f: FrameContext): void {
+    this.updateGolden(f);
     const sLat = f.cfg.spotlightLat ?? f.cfg.centerLat;
     const sLon = f.cfg.spotlightLon ?? f.cfg.centerLon;
 
@@ -28,18 +50,21 @@ export class SpotlightLayer implements Layer {
         const p = f.cam.project(sel.lat, sel.lon);
         const pulse = 0.5 + 0.5 * Math.sin(f.t * 3);
         ctx.save();
-        ctx.strokeStyle = `rgba(57,194,216,${(0.45 + 0.4 * pulse).toFixed(3)})`;
+        ctx.strokeStyle = this.ring(0.45 + 0.4 * pulse);
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(p.x, p.y, 18 + 4 * pulse, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
-        this.drawPlacard(f, sel, sLat, sLon);
+        // The rich tap card (DOM) owns the details for a tapped aircraft; we only
+        // ring it here. The canvas placard is reserved for the auto-feature.
         return;
       }
     }
 
-    if (!f.cfg.showSpotlight) return;
+    // During golden hour, auto-feature even if the spotlight is otherwise off — it's
+    // the prettiest light to catch an aircraft in.
+    if (!f.cfg.showSpotlight && this.golden < 0.15) return;
     const radius = f.cfg.spotlightRadiusMi || 15;
     const now = f.t * 1000;
 
@@ -72,7 +97,7 @@ export class SpotlightLayer implements Layer {
     // Pulsing ring.
     const pulse = 0.5 + 0.5 * Math.sin(f.t * 3);
     ctx.save();
-    ctx.strokeStyle = `rgba(57,194,216,${(0.35 + 0.4 * pulse).toFixed(3)})`;
+    ctx.strokeStyle = this.ring(0.35 + 0.4 * pulse);
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(p.x, p.y, 16 + 4 * pulse, 0, Math.PI * 2);
@@ -88,12 +113,30 @@ export class SpotlightLayer implements Layer {
     const brg = bearingDeg(sLat, sLon, a.lat, a.lon);
     const lines: string[] = [];
     lines.push(a.flight || a.registration || a.hex.toUpperCase());
+    if (a.airline) lines.push(a.airline);
     const sub: string[] = [];
     if (a.typeName) sub.push(a.typeName);
     if (a.onGround) sub.push("on ground");
     else if (a.altBaro != null) sub.push(Math.round(a.altBaro).toLocaleString() + " ft");
     if (sub.length) lines.push(sub.join("  ·  "));
-    lines.push(`${d.toFixed(1)} mi ${compass(brg)}` + (a.destination ? `  ·  → ${a.destination}` : ""));
+    // Vertical rate from the radio.
+    const vr = vrateLabel(a);
+    if (vr) lines.push(vr);
+    // Autopilot intent (Mode-S nav state): engaged modes + selected altitude/heading/baro.
+    // "AP" prefix labels the row; drop a literal "autopilot" mode so it doesn't double up.
+    const ap: string[] = [];
+    const modes = (a.navModes ?? []).filter((m) => m !== "autopilot");
+    if (modes.length) ap.push(modes.map(modeLabel).join("·"));
+    const tgt = !a.onGround ? a.selAlt ?? a.fmsAlt : undefined;
+    if (tgt != null) ap.push(`⤓ ${Math.round(tgt).toLocaleString()} ft`);
+    if (a.selHeading != null) ap.push(`hdg ${Math.round(a.selHeading)}°`);
+    if (a.navQNH != null) ap.push(`${(a.navQNH / 33.8639).toFixed(2)} inHg`);
+    if (ap.length) lines.push("AP  " + ap.join("  ·  "));
+    // Full route (enrichment): prefer airport names, fall back to ICAO codes.
+    const o = a.originName || a.origin;
+    const ds = a.destName || a.destination;
+    if (o || ds) lines.push(`${o ?? "?"}  →  ${ds ?? "?"}`);
+    lines.push(`${d.toFixed(1)} mi ${compass(brg)}`);
     if (!a.onGround && a.altBaro != null) {
       const elev = (Math.atan2(a.altBaro * 0.3048, Math.max(1, d * 1609.34)) * 180) / Math.PI;
       lines.push(`LOOK ${compass(brg)} · ${Math.round(elev)}° UP`);
@@ -102,6 +145,12 @@ export class SpotlightLayer implements Layer {
     if (cpa && cpa.etaSec > 2 && cpa.etaSec < 600 && cpa.minMi < d) {
       lines.push(`closest ~${cpa.minMi.toFixed(1)} mi in ${Math.round(cpa.etaSec)}s`);
     }
+    // Identity from the radio: squawk, tail number, ICAO type code.
+    const id: string[] = [];
+    if (a.squawk) id.push(`sqwk ${a.squawk}`);
+    if (a.registration) id.push(a.registration);
+    if (a.typeCode) id.push(a.typeCode);
+    if (id.length) lines.push(id.join("  ·  "));
 
     const photo = getPhoto(a.hex, a.registration);
     ctx.save();
@@ -140,13 +189,41 @@ export class SpotlightLayer implements Layer {
     ctx.stroke();
     const ty = y + photoBlock + padY;
     for (let i = 0; i < lines.length; i++) {
-      const cyan = lines[i].startsWith("LOOK") || lines[i].startsWith("closest");
+      const cyan = lines[i].startsWith("LOOK") || lines[i].startsWith("closest") || lines[i].startsWith("AP ");
       ctx.fillStyle = i === 0 ? "rgba(238,243,250,0.98)" : cyan ? "rgba(57,194,216,0.95)" : "rgba(196,205,219,0.85)";
       ctx.font = i === 0 || cyan ? "600 12px system-ui, sans-serif" : "12px system-ui, sans-serif";
       ctx.fillText(lines[i], x + padX, ty + i * lh);
     }
     ctx.restore();
   }
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v;
+}
+function lerpRGB(a: [number, number, number], b: [number, number, number], t: number): [number, number, number] {
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+}
+
+// Short labels for readsb's nav_modes (engaged autopilot modes).
+function modeLabel(m: string): string {
+  switch (m) {
+    case "autopilot": return "AP";
+    case "vnav": return "VNAV";
+    case "lnav": return "LNAV";
+    case "althold": return "ALT";
+    case "approach": return "APPR";
+    case "tcas": return "TCAS";
+    default: return m.toUpperCase();
+  }
+}
+
+// Vertical rate as an arrow + ft/min, rounded to 100 fpm; "level" inside ±100.
+function vrateLabel(a: Visible): string | null {
+  if (a.onGround || a.baroRate == null) return null;
+  const r = Math.round(a.baroRate / 100) * 100;
+  if (Math.abs(r) < 100) return "level";
+  return (r > 0 ? "↑ " : "↓ ") + Math.abs(r).toLocaleString() + " fpm";
 }
 
 function closestApproach(a: Visible, sLat: number, sLon: number): { minMi: number; etaSec: number } | null {

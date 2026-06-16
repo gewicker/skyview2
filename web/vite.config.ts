@@ -2,9 +2,9 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
 
-// Two entry points (kiosk display + phone control), built into the Go server's
-// embed directory so the binary is self-contained. Dev proxies /api and /ws to the
-// Go server on :3000.
+// Single entry point: the display app. The control panel is now an in-display drawer
+// (Display.tsx), so there's no separate control page. Built into the Go server's embed
+// directory so the binary is self-contained. Dev proxies /api and /ws to :3000.
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -16,7 +16,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         display: resolve(__dirname, "index.html"),
-        control: resolve(__dirname, "control.html"),
       },
     },
   },

@@ -1,7 +1,4 @@
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
-import Control from "./Control";
-
-createRoot(document.getElementById("root")!).render(
-  <StrictMode><Control /></StrictMode>,
-);
+// Deprecated entry. The control panel is now an in-display drawer (see
+// display/Display.tsx, which embeds ./Control as a controlled component). This file is
+// no longer a Vite entry point and intentionally renders nothing.
+export {};

@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# skyview-display-power {on|off}
+#
+# Turn the SkyView display output on/off for the lights-out sleep schedule. The Go
+# server calls this (POST /api/display/power) when the kiosk crosses the
+# bedtime→sunrise boundary. It tries the blanking mechanisms in order and uses
+# whichever works on this Pi/compositor, so a fresh image just works.
+#
+# Wayland (labwc/wlroots, the v2 kiosk default): wlopm.
+# X11 fallback: xset dpms.
+# Firmware fallback (older stacks): vcgencmd display_power.
+set -u
+
+ACTION="${1:-on}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+# Discover the running Wayland display if not already set.
+if [ -z "${WAYLAND_DISPLAY:-}" ]; then
+  WAYLAND_DISPLAY="$(basename "$(ls -1 "$XDG_RUNTIME_DIR"/wayland-* 2>/dev/null | grep -v '\.lock' | head -n1)" 2>/dev/null)"
+  export WAYLAND_DISPLAY
+fi
+
+want_on() { [ "$ACTION" = "on" ]; }
+
+# 1) wlroots compositor (labwc): wlopm
+if command -v wlopm >/dev/null 2>&1 && [ -n "${WAYLAND_DISPLAY:-}" ]; then
+  if want_on; then wlopm --on '*'; else wlopm --off '*'; fi && exit 0
+fi
+
+# 2) wlr-randr (alternative wlroots tool)
+if command -v wlr-randr >/dev/null 2>&1 && [ -n "${WAYLAND_DISPLAY:-}" ]; then
+  OUT="$(wlr-randr --json 2>/dev/null | grep -oE '"name": *"[^"]+"' | head -n1 | sed -E 's/.*"([^"]+)"$/\1/')"
+  if [ -n "$OUT" ]; then
+    if want_on; then wlr-randr --output "$OUT" --on; else wlr-randr --output "$OUT" --off; fi && exit 0
+  fi
+fi
+
+# 3) X11
+if command -v xset >/dev/null 2>&1; then
+  export DISPLAY="${DISPLAY:-:0}"
+  if want_on; then xset dpms force on; else xset dpms force off; fi && exit 0
+fi
+
+# 4) Firmware (legacy)
+if command -v vcgencmd >/dev/null 2>&1; then
+  if want_on; then vcgencmd display_power 1; else vcgencmd display_power 0; fi && exit 0
+fi
+
+echo "skyview-display-power: no supported blanking mechanism found" >&2
+exit 1

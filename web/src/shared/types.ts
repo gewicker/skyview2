@@ -47,6 +47,7 @@ export interface Aircraft {
   altBaro?: number; altGeom?: number; gs?: number; track?: number; baroRate?: number;
   squawk?: string; seen: number;
   onGround?: boolean; category?: string; selAlt?: number;
+  fmsAlt?: number; selHeading?: number; navQNH?: number; navModes?: string[];
   windSpd?: number; windDir?: number; oat?: number;
   typeCode?: string; typeName?: string; airline?: string; registration?: string;
   origin?: string; destination?: string; originName?: string; destName?: string;
@@ -69,7 +70,7 @@ export type ClientMessage =
   | { type: "hello"; role: "display" | "control" }
   | { type: "patchConfig"; patch: Partial<Config> }
   | { type: "resetConfig" }
-  | { type: "saveScene"; name: string }
+  | { type: "saveScene"; name: string; config?: Config }
   | { type: "applyScene"; name: string }
   | { type: "deleteScene"; name: string }
   | { type: "ping" };

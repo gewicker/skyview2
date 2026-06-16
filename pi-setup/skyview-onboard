@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Onboarding net: write a status file to the boot partition and, if WiFi never comes
+# up, raise a fallback setup hotspot so a headless Pi is always reachable. Ported from
+# v1's skydeck-onboard. Driven by skyview-onboard.service (at boot) + .timer (re-check).
+#
+#   Fallback AP : SSID "SkyView-setup"  password "skyview-setup"
+#   Reach the Pi: connect to that AP, then  ssh <user>@10.42.0.1
+#   Status file : /boot/firmware/skyview-status.txt  (read the card on any PC)
+set -uo pipefail
+[ -f /etc/default/skyview ] && . /etc/default/skyview
+TARGET_SSID="${TARGET_SSID:-}"   # carried over from the existing/v1 WiFi at install time
+TARGET_PSK="${TARGET_PSK:-}"
+AP_NAME="SkyView-setup"; AP_PASS="skyview-setup"; BOOT=/boot/firmware
+
+gw()     { ip route 2>/dev/null | awk '/default/{print $3; exit}'; }
+online() { local g; g="$(gw)"; [ -n "$g" ] && ping -c1 -W2 "$g" >/dev/null 2>&1; }
+assoc()  { nmcli -t -f NAME,DEVICE c show --active 2>/dev/null | awk -F: '$2=="wlan0"{print $1; exit}'; }
+status() {
+  { echo "skyview status $(date)";
+    echo "target_ssid=$TARGET_SSID";
+    echo "associated=$(assoc)";
+    echo "ip=$(hostname -I | awk '{print $1}')";
+    echo "hostname=$(hostname).local";
+    echo "gateway=$(gw)";
+    echo "online=$(online && echo yes || echo no)";
+    echo "setup_ap=$AP_NAME / $AP_PASS  ->  ssh ${SUDO_USER:-${USER:-pi}}@10.42.0.1";
+  } > "$BOOT/skyview-status.txt" 2>/dev/null || true
+}
+
+# Give WiFi up to ~2 min to associate (boot), short-circuits instantly once online.
+for _ in $(seq 1 24); do online && break; sleep 5; done
+status
+
+if online; then
+  nmcli con down "$AP_NAME" 2>/dev/null || true   # tear the fallback AP down once real WiFi is up
+  exit 0
+fi
+
+# Offline: first try to (re)join the KNOWN WiFi carried over from the prior setup/v1,
+# so the appliance recovers on its own without a person touching the hotspot.
+if [ -n "$TARGET_SSID" ]; then
+  nmcli con down "$AP_NAME" 2>/dev/null || true
+  nmcli dev wifi connect "$TARGET_SSID" ${TARGET_PSK:+password "$TARGET_PSK"} ifname wlan0 2>/dev/null || true
+  for _ in $(seq 1 6); do online && { status; exit 0; }; sleep 5; done
+fi
+
+# Still offline (wrong/changed creds): raise the setup hotspot — Pi reachable at 10.42.0.1.
+nmcli con show "$AP_NAME" >/dev/null 2>&1 \
+  || nmcli device wifi hotspot ifname wlan0 ssid "$AP_NAME" password "$AP_PASS" 2>/dev/null || true
+status

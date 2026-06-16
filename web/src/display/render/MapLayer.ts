@@ -5,6 +5,7 @@
 // drawImage, scaled + translated to the live camera) and only re-rasterize once the
 // view settles. That keeps the basemap locked to the traffic AND fast.
 import type { Layer, FrameContext } from "./types";
+import type { Camera } from "./mercator";
 import { drawTiles, tilesVersion } from "./tiles";
 
 interface RView { mapCenterLat: number; mapCenterLon: number; mapZoom: number }
@@ -26,9 +27,9 @@ export class MapLayer implements Layer {
     const fixed = [cfg.mapStyle, cfg.mapRotationDeg, f.w, f.h, f.dpr].join("|");
 
     const forced = !this.renderedView || fixed !== this.renderedFixed;
-    // Re-rasterize at most ~5×/sec while the view differs — so the map crisps up and
+    // Re-rasterize at most ~9×/sec while the view differs — so the map crisps up and
     // pulls new-zoom tiles DURING the gesture, not only after it settles.
-    const throttleOk = now - this.builtAt > 180;
+    const throttleOk = now - this.builtAt > 110;
     const tilesArrived = tilesVersion() !== this.tilesV && now - this.builtAt > 300;
     if (forced || (key !== this.renderedKey && throttleOk) || tilesArrived) {
       this.rasterize(f);
@@ -44,30 +45,38 @@ export class MapLayer implements Layer {
   }
 
   // Full re-render of the basemap into the offscreen canvas at the current view.
+  // The buffer is oversized (PAD) and rendered through a padded camera so a
+  // subsequent zoom-out/pan has real map in the margins instead of empty bg.
   private rasterize(f: FrameContext): void {
     const cfg = f.cfg;
-    const W = Math.max(1, Math.round(f.w * f.dpr));
-    const H = Math.max(1, Math.round(f.h * f.dpr));
+    const PAD = 1.25;
+    const PW = Math.round(f.w * PAD), PH = Math.round(f.h * PAD);
+    const padCam = f.cam.withScreen(PW, PH);
+    const W = Math.max(1, Math.round(PW * f.dpr));
+    const H = Math.max(1, Math.round(PH * f.dpr));
     if (this.canvas.width !== W) this.canvas.width = W;
     if (this.canvas.height !== H) this.canvas.height = H;
     const sx = this.ctx;
     sx.setTransform(f.dpr, 0, 0, f.dpr, 0, 0);
     sx.fillStyle = cfg.palette.bg;
-    sx.fillRect(0, 0, f.w, f.h);
-    const drew = drawTiles(sx, f.cam, f.w, f.h, cfg.mapStyle);
+    sx.fillRect(0, 0, PW, PH);
+    const drew = drawTiles(sx, padCam, PW, PH, cfg.mapStyle);
     if (drew) {
-      if (cfg.mapStyle === "satellite") this.gradeSatellite(sx, f.w, f.h);
-      else this.gradeDark(sx, f.w, f.h);
+      if (cfg.mapStyle === "satellite") this.gradeSatellite(sx, PW, PH);
+      else this.gradeDark(sx, PW, PH);
     }
-    this.cinematic(sx, f.w, f.h, cfg.mapStyle === "satellite");
-    this.rings(sx, f, cfg);
+    this.cinematic(sx, PW, PH, cfg.mapStyle === "satellite");
+    this.rings(sx, padCam, cfg);
   }
 
   private straightBlit(f: FrameContext): void {
     const ctx = f.ctx;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(this.canvas, 0, 0);
+    // Centre the oversized buffer on the screen.
+    const dx = (f.w * f.dpr - this.canvas.width) / 2;
+    const dy = (f.h * f.dpr - this.canvas.height) / 2;
+    ctx.drawImage(this.canvas, dx, dy);
     ctx.restore();
   }
 
@@ -133,9 +142,9 @@ export class MapLayer implements Layer {
     sx.restore();
   }
 
-  private rings(sx: CanvasRenderingContext2D, f: FrameContext, cfg: FrameContext["cfg"]): void {
-    const home = f.cam.project(cfg.centerLat, cfg.centerLon);
-    const north = f.cam.project(cfg.centerLat + 1 / 69, cfg.centerLon);
+  private rings(sx: CanvasRenderingContext2D, cam: Camera, cfg: FrameContext["cfg"]): void {
+    const home = cam.project(cfg.centerLat, cfg.centerLon);
+    const north = cam.project(cfg.centerLat + 1 / 69, cfg.centerLon);
     const pxPerMile = Math.hypot(north.x - home.x, north.y - home.y);
     if (!(pxPerMile > 0)) return;
     sx.save();

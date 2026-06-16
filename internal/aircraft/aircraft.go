@@ -19,7 +19,14 @@ type Aircraft struct {
 	Seen     float64  `json:"seen"`
 	OnGround bool     `json:"onGround,omitempty"`
 	Category string   `json:"category,omitempty"` // ADS-B emitter category (e.g. A3, B2)
-	SelAlt   *float64 `json:"selAlt,omitempty"`   // selected/MCP altitude (final-approach cue)
+
+	// Autopilot intent — Mode-S BDS 4,0 / nav state decoded by readsb. Present only
+	// when the aircraft transmits it (most airliners do; most GA does not).
+	SelAlt     *float64 `json:"selAlt,omitempty"`     // MCP/FCU selected altitude
+	FMSAlt     *float64 `json:"fmsAlt,omitempty"`     // FMS-managed selected altitude
+	SelHeading *float64 `json:"selHeading,omitempty"` // selected heading, deg
+	NavQNH     *float64 `json:"navQNH,omitempty"`     // selected baro setting, hPa
+	NavModes   []string `json:"navModes,omitempty"`   // engaged modes: autopilot/vnav/lnav/althold/approach/tcas
 
 	// Decoder-derived Mode-S EHS fields — feed the winds-aloft overlay.
 	WindSpd *float64 `json:"windSpd,omitempty"` // kt

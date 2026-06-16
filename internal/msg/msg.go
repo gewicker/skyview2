@@ -21,7 +21,8 @@ type SourceStatus struct {
 
 // SceneMeta is a saved named configuration (metadata only in lists).
 type SceneMeta struct {
-	Name string `json:"name"`
+	Name    string  `json:"name"`
+	SavedAt float64 `json:"savedAt"`
 }
 
 // NotableEvent is one flagged aircraft (emergency/military/rare).
@@ -48,8 +49,9 @@ type ServerMessage struct {
 // "hello" | "patchConfig" | "resetConfig" | "saveScene" | "applyScene" |
 // "deleteScene" | "ping".
 type ClientMessage struct {
-	Type  string          `json:"type"`
-	Role  string          `json:"role,omitempty"`
-	Patch json.RawMessage `json:"patch,omitempty"`
-	Name  string          `json:"name,omitempty"`
+	Type   string          `json:"type"`
+	Role   string          `json:"role,omitempty"`
+	Patch  json.RawMessage `json:"patch,omitempty"`
+	Name   string          `json:"name,omitempty"`
+	Config json.RawMessage `json:"config,omitempty"` // optional full config for saveScene (web saves its own view)
 }

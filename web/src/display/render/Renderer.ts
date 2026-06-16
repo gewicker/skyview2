@@ -67,7 +67,11 @@ export class Renderer {
   update(aircraft: Aircraft[]): void { this.store.ingest(aircraft); }
 
   resize(): void {
-    this.dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+    // renderScale lets the Pi kiosk paint below native density (e.g. 0.75 on a 4K
+    // panel) — the single biggest framerate lever. Hard-cap at 2 either way.
+    const scale = this.getConfig?.()?.renderScale || 1;
+    const native = Math.max(1, window.devicePixelRatio || 1);
+    this.dpr = clamp(native * scale, 0.5, 2);
     this.w = this.canvas.clientWidth || window.innerWidth;
     this.h = this.canvas.clientHeight || window.innerHeight;
     this.canvas.width = Math.round(this.w * this.dpr);

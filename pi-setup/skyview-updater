@@ -8,6 +8,9 @@
 # Channels (set in /etc/skyview/update.conf):
 #   CHANNEL=github   poll the latest GitHub release, asset skyview-linux-arm64(+.sha256)
 #   CHANNEL=http     poll a manifest URL: {"version":..,"url":..,"sha256":..}
+#   CHANNEL=git      build-on-device from origin/main (dev): fetch, `make pi`, swap,
+#                    health-check, auto-rollback the commit + binary on failure.
+#                    Needs Go + Node/npm on the Pi. Enable with use-git-channel.sh.
 # Safe to run by hand:  skyview update now
 set -uo pipefail
 
@@ -51,7 +54,48 @@ PY
   esac
 }
 
+# --- git channel: build-on-device from origin, with commit+binary rollback -------- #
+git_update() {
+  local APPDIR BRANCH local_sha remote_sha
+  APPDIR="${APPDIR:-$HOME/skyview2}"
+  BRANCH="${GIT_BRANCH:-main}"
+  command -v go  >/dev/null 2>&1 || { log "git channel needs Go on the Pi"; exit 1; }
+  command -v make >/dev/null 2>&1 || { log "git channel needs make on the Pi"; exit 1; }
+  [ -d "$APPDIR/.git" ] || { log "git channel: $APPDIR is not a git checkout"; exit 1; }
+
+  git -C "$APPDIR" fetch --quiet origin "$BRANCH" || { log "git fetch failed"; exit 1; }
+  local_sha="$(git -C "$APPDIR" rev-parse HEAD)"
+  remote_sha="$(git -C "$APPDIR" rev-parse "origin/$BRANCH")"
+  [ "$local_sha" = "$remote_sha" ] && { log "up to date (${local_sha:0:8})"; exit 0; }
+  log "building ${remote_sha:0:8} (from ${local_sha:0:8})"
+
+  cp -f "$BIN" "$STATE/skyview.prev" 2>/dev/null || true
+  git -C "$APPDIR" reset --hard "origin/$BRANCH" --quiet
+
+  if make -C "$APPDIR" pi >/tmp/skyview-build.log 2>&1; then
+    sudo install -m755 "$APPDIR/bin/skyview" "$BIN"
+    sudo systemctl restart "$SERVICE"
+    if health; then
+      printf 'git:%s' "$remote_sha" | sudo tee "$STATE/version" >/dev/null
+      log "git update OK (${remote_sha:0:8})"
+      exit 0
+    fi
+    log "unhealthy after build — rolling back"
+  else
+    log "build failed — rolling back (see /tmp/skyview-build.log)"
+  fi
+
+  # Roll back the working tree + binary and restart.
+  git -C "$APPDIR" reset --hard "$local_sha" --quiet
+  [ -f "$STATE/skyview.prev" ] && sudo install -m755 "$STATE/skyview.prev" "$BIN"
+  sudo systemctl restart "$SERVICE"
+  health && log "rolled back to ${local_sha:0:8}" || log "ROLLBACK UNHEALTHY — check 'skyview logs'"
+  exit 1
+}
+
 main() {
+  [ "$CHANNEL" = "git" ] && git_update   # builds, swaps, health-checks, returns/exits
+
   local row ver url sha
   row="$(resolve)" || { log "resolve failed"; exit 1; }
   ver="$(printf '%s' "$row" | cut -f1)"

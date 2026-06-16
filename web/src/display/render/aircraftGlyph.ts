@@ -87,7 +87,9 @@ const JET_QUAD: JetParams = { nose: -1.24, tail: 1.16, halfW: 0.13, wingY: -0.04
 const JET_TPROP: JetParams = { nose: -1.0, tail: 0.98, halfW: 0.11, wingY: -0.06, wingSpan: 1.04, wingSweep: 0.1, rootChord: 0.3, tipChord: 0.17, stabY: 0.78, stabSpan: 0.44, stabSweep: 0.05, stabChord: 0.14 };
 const JET_BIZJET: JetParams = { nose: -1.0, tail: 0.96, halfW: 0.085, wingY: 0.12, wingSpan: 0.8, wingSweep: 0.28, rootChord: 0.2, tipChord: 0.07, stabY: 0.8, stabSpan: 0.48, stabSweep: 0.08, stabChord: 0.1 };
 
-export function drawAircraftGlyph(ctx: CanvasRenderingContext2D, kind: GlyphKind, s: number, color: RGB, alpha: number, t: number, seed: number): void {
+// The static silhouette (everything except spinning props/rotors). This is what gets
+// cached into a sprite — see glyphCache.ts.
+export function drawGlyphStatic(ctx: CanvasRenderingContext2D, kind: GlyphKind, s: number, color: RGB, alpha: number): void {
   ctx.shadowBlur = 0;
   const fill = col(color, Math.min(1, alpha * 1.08));
   switch (kind) {
@@ -103,8 +105,6 @@ export function drawAircraftGlyph(ctx: CanvasRenderingContext2D, kind: GlyphKind
       break;
     case "turboprop":
       jetSilhouette(ctx, s, JET_TPROP, fill);
-      propDisc(ctx, -0.5 * s, (JET_TPROP.wingY + 0.08) * s, 0.26 * s, color, alpha, t * 9 + seed);
-      propDisc(ctx, 0.5 * s, (JET_TPROP.wingY + 0.08) * s, 0.26 * s, color, alpha, -t * 9 + seed, true);
       core(ctx, s, alpha, 0.09);
       break;
     case "bizjet":
@@ -128,12 +128,9 @@ export function drawAircraftGlyph(ctx: CanvasRenderingContext2D, kind: GlyphKind
       break;
     case "light":
       lightBody(ctx, s, fill);
-      propDisc(ctx, 0, -0.92 * s, 0.34 * s, color, alpha, t * 11 + seed);
       break;
     case "helicopter":
       heliBody(ctx, s, fill);
-      propDisc(ctx, 0.04 * s, 1.18 * s, 0.22 * s, color, alpha, t * 16 + seed, false, 2);
-      mainRotor(ctx, s, color, alpha, t * 6 + seed);
       break;
     case "airliner":
     default:
@@ -142,6 +139,35 @@ export function drawAircraftGlyph(ctx: CanvasRenderingContext2D, kind: GlyphKind
       core(ctx, s, alpha, 0.1);
       break;
   }
+}
+
+// The animated parts (props/rotors) — drawn live on top of the cached sprite.
+export function drawGlyphSpinners(ctx: CanvasRenderingContext2D, kind: GlyphKind, s: number, color: RGB, alpha: number, t: number, seed: number): void {
+  switch (kind) {
+    case "turboprop":
+      propDisc(ctx, -0.5 * s, (JET_TPROP.wingY + 0.08) * s, 0.26 * s, color, alpha, t * 9 + seed);
+      propDisc(ctx, 0.5 * s, (JET_TPROP.wingY + 0.08) * s, 0.26 * s, color, alpha, -t * 9 + seed, true);
+      break;
+    case "light":
+      propDisc(ctx, 0, -0.92 * s, 0.34 * s, color, alpha, t * 11 + seed);
+      break;
+    case "helicopter":
+      propDisc(ctx, 0.04 * s, 1.18 * s, 0.22 * s, color, alpha, t * 16 + seed, false, 2);
+      mainRotor(ctx, s, color, alpha, t * 6 + seed);
+      break;
+  }
+}
+
+// Convenience: full glyph (static + spinners) in one call. Used where caching isn't
+// worth it; the hot path (AircraftLayer) uses the cached sprite + spinners directly.
+export function drawAircraftGlyph(ctx: CanvasRenderingContext2D, kind: GlyphKind, s: number, color: RGB, alpha: number, t: number, seed: number): void {
+  drawGlyphStatic(ctx, kind, s, color, alpha);
+  drawGlyphSpinners(ctx, kind, s, color, alpha, t, seed);
+}
+
+/** True for kinds that have animated rotors/props worth drawing live. */
+export function hasSpinners(kind: GlyphKind): boolean {
+  return kind === "turboprop" || kind === "light" || kind === "helicopter";
 }
 
 function fuselage(ctx: CanvasRenderingContext2D, s: number, p: JetParams): void {

@@ -61,6 +61,12 @@ case "$cmd" in
     sudo /usr/local/bin/skyview-harden --seal ;;
   unseal)
     sudo /usr/local/bin/skyview-harden --unseal ;;
+  switch)
+    # skyview switch v1|v2|status — flip active version (v2 primary, v1 baseline)
+    exec /usr/local/bin/skyview-switch "${2:-status}" ;;
+  rollback)
+    # convenience: jump straight back to the v1 baseline
+    exec /usr/local/bin/skyview-switch v1 ;;
   *)
-    echo "usage: skyview {status|logs [service]|restart|update now|auto [on|off]|health|ip|wifi \"<ssid>\" \"<pass>\"|seal|unseal}"; exit 1 ;;
+    echo "usage: skyview {status|logs [service]|restart|update now|auto [on|off]|health|ip|wifi \"<ssid>\" \"<pass>\"|seal|unseal|switch v1|v2|rollback}"; exit 1 ;;
 esac

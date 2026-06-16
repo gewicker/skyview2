@@ -41,8 +41,8 @@ while true; do
   pkill -f "/usr/lib/chrom[i]um" 2>/dev/null || true
   pkill -x pcmanfm 2>/dev/null || true
   sleep 1
-  log "launching kiosk -> \$BASE_URL/"
-  "\$CHROMIUM" --kiosk --ozone-platform=x11 --app="\$BASE_URL/" \\
+  log "launching kiosk -> \$BASE_URL/?kiosk=1"
+  "\$CHROMIUM" --kiosk --ozone-platform=x11 --app="\$BASE_URL/?kiosk=1" \\
     --user-data-dir="\$HOME/.kiosk-profile" --no-first-run --password-store=basic \\
     --noerrdialogs --disable-infobars --disable-session-crashed-bubble \\
     --autoplay-policy=no-user-gesture-required \\

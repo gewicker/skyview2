@@ -6,7 +6,7 @@ import { Camera } from "./mercator";
 import type { MapStyle } from "@shared/types";
 
 const SUB = "abcd";
-const CAP = 400;
+const CAP = 700; // higher cap = less reload churn when panning back over old ground
 const DEG = Math.PI / 180;
 const cache = new Map<string, HTMLImageElement>();
 let loads = 0;
@@ -38,6 +38,9 @@ function getTile(url: string): HTMLImageElement | null {
     cache.set(url, img);
     return null;
   }
+  // LRU touch so frequently-seen tiles survive eviction during a pan.
+  cache.delete(url);
+  cache.set(url, img);
   return img.complete && img.naturalWidth > 0 ? img : null;
 }
 
@@ -55,9 +58,20 @@ function llToTile(lat: number, lon: number, z: number): [number, number] {
   return [x, y];
 }
 
-/** Paint tiles covering the camera's view. Returns true if any tile drew. */
+/** Paint tiles covering the camera's view. Draws a coarse base layer first (z−2) so
+ *  any detail tiles still loading don't leave holes — you get a blurry fill that
+ *  sharpens as the real tiles arrive, instead of a checkerboard. Returns true if any
+ *  tile drew. */
 export function drawTiles(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: number, style: MapStyle): boolean {
   const z = cam.tileZoom();
+  const base = Math.max(11, z - 2);
+  let drew = false;
+  if (base < z) drew = drawLevel(ctx, cam, w, h, style, base) || drew;
+  drew = drawLevel(ctx, cam, w, h, style, z) || drew;
+  return drew;
+}
+
+function drawLevel(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: number, style: MapStyle, z: number): boolean {
   let txMin = Infinity, txMax = -Infinity, tyMin = Infinity, tyMax = -Infinity;
   for (const [sx, sy] of [[0, 0], [w, 0], [0, h], [w, h]] as const) {
     const { lat, lon } = cam.unproject(sx, sy);
