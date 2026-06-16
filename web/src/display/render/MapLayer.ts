@@ -10,15 +10,22 @@ import { drawTiles, tilesVersion } from "./tiles";
 
 interface RView { mapCenterLat: number; mapCenterLon: number; mapZoom: number }
 
+const FADE_MS = 200; // zoom/tile cross-fade duration on a settled re-raster
+
 export class MapLayer implements Layer {
   readonly name = "map";
-  private canvas = document.createElement("canvas");
-  private ctx = this.canvas.getContext("2d", { alpha: false })!;
+  // Two ping-pong buffers so a freshly rasterized (sharp) map can cross-fade IN over the
+  // previous one — this is what smooths the zoom "pop" (scaled-blurry → crisp) on settle.
+  private cv = [document.createElement("canvas"), document.createElement("canvas")];
+  private cx = [this.cv[0].getContext("2d", { alpha: false })!, this.cv[1].getContext("2d", { alpha: false })!];
+  private cur = 0; // index of the buffer holding the CURRENT raster
   private renderedView: RView | null = null;
   private renderedFixed = ""; // style + rotation + size + dpr the canvas was built at
   private renderedKey = "";
   private tilesV = -1;
   private builtAt = 0;
+  private prevView: RView | null = null; // previous raster's view, for the cross-fade
+  private fadeStart = 0;
 
   draw(f: FrameContext): void {
     const cfg = f.cfg;
@@ -39,16 +46,29 @@ export class MapLayer implements Layer {
     }
     if (!needRaster && tilesArrived && !f.interacting) needRaster = true;
     if (needRaster) {
+      const hadPrev = !!this.renderedView;
+      this.prevView = this.renderedView; // preserve old view for the cross-fade
+      this.cur ^= 1;                      // new raster → other buffer; old kept in the prev one
       this.rasterize(f);
       this.renderedView = { mapCenterLat: f.view.mapCenterLat, mapCenterLon: f.view.mapCenterLon, mapZoom: f.view.mapZoom };
       this.renderedFixed = fixed;
       this.renderedKey = key;
       this.tilesV = tilesVersion();
       this.builtAt = now;
+      // Cross-fade only on a SETTLED re-raster (during a gesture we transform-blit and
+      // want no double-expose); turns the zoom/tile sharpen into a 200 ms dissolve.
+      this.fadeStart = hadPrev && !f.interacting ? now : 0;
     }
 
-    if (key === this.renderedKey || !this.renderedView) this.straightBlit(f);
-    else this.transformBlit(f); // mid-gesture: cheap transformed blit of the cache
+    if (!this.renderedView) return;
+    const fadeT = this.fadeStart ? (now - this.fadeStart) / FADE_MS : 1;
+    if (fadeT < 1 && this.prevView) {
+      this.blit(f, this.cv[this.cur ^ 1], this.prevView, 1);                    // old underneath
+      this.blit(f, this.cv[this.cur], this.renderedView, 1 - (1 - fadeT) ** 2); // new eases in
+    } else {
+      this.fadeStart = 0;
+      this.blit(f, this.cv[this.cur], this.renderedView, 1);
+    }
   }
 
   // Full re-render of the basemap into the offscreen canvas at the current view.
@@ -61,9 +81,9 @@ export class MapLayer implements Layer {
     const padCam = f.cam.withScreen(PW, PH);
     const W = Math.max(1, Math.round(PW * f.dpr));
     const H = Math.max(1, Math.round(PH * f.dpr));
-    if (this.canvas.width !== W) this.canvas.width = W;
-    if (this.canvas.height !== H) this.canvas.height = H;
-    const sx = this.ctx;
+    if (this.cv[this.cur].width !== W) this.cv[this.cur].width = W;
+    if (this.cv[this.cur].height !== H) this.cv[this.cur].height = H;
+    const sx = this.cx[this.cur];
     sx.setTransform(f.dpr, 0, 0, f.dpr, 0, 0);
     sx.fillStyle = cfg.palette.bg;
     sx.fillRect(0, 0, PW, PH);
@@ -84,34 +104,27 @@ export class MapLayer implements Layer {
     const rv = this.renderedView;
     const c = f.cam.project(rv.mapCenterLat, rv.mapCenterLon);
     const s = f.view.mapZoom / rv.mapZoom;
-    const halfW = (this.canvas.width / f.dpr) * s / 2; // cached buffer half-size in CSS px
-    const halfH = (this.canvas.height / f.dpr) * s / 2;
+    const cv = this.cv[this.cur];
+    const halfW = (cv.width / f.dpr) * s / 2; // cached buffer half-size in CSS px
+    const halfH = (cv.height / f.dpr) * s / 2;
     const m = 2; // small slack
     return c.x - halfW <= m && c.x + halfW >= f.w - m && c.y - halfH <= m && c.y + halfH >= f.h - m;
   }
 
-  private straightBlit(f: FrameContext): void {
+  // Draw a buffer placed/scaled to the live camera from the view it was rasterized at (so
+  // a buffer from a different zoom appears correctly scaled). At rest this centres the
+  // current buffer 1:1; during a gesture it scales/translates it; during a settle fade the
+  // previous buffer is drawn under the new one. `alpha` drives the cross-fade.
+  private blit(f: FrameContext, canvas: HTMLCanvasElement, view: RView, alpha: number): void {
+    const c = f.cam.project(view.mapCenterLat, view.mapCenterLon);
+    const s = f.view.mapZoom / view.mapZoom;
     const ctx = f.ctx;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    // Centre the oversized buffer on the screen.
-    const dx = (f.w * f.dpr - this.canvas.width) / 2;
-    const dy = (f.h * f.dpr - this.canvas.height) / 2;
-    ctx.drawImage(this.canvas, dx, dy);
-    ctx.restore();
-  }
-
-  // Blit the cached canvas scaled + translated to the live camera (gesture).
-  private transformBlit(f: FrameContext): void {
-    const rv = this.renderedView!;
-    const c = f.cam.project(rv.mapCenterLat, rv.mapCenterLon); // its centre in the live view
-    const s = f.view.mapZoom / rv.mapZoom;
-    const ctx = f.ctx;
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (alpha < 1) ctx.globalAlpha = alpha;
     ctx.translate(c.x * f.dpr, c.y * f.dpr);
     ctx.scale(s, s);
-    ctx.drawImage(this.canvas, -this.canvas.width / 2, -this.canvas.height / 2);
+    ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
     ctx.restore();
   }
 

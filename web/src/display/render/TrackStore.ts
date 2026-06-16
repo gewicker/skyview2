@@ -6,8 +6,10 @@
 import type { Aircraft, Config } from "@shared/types";
 import type { Sample, Visible } from "./types";
 
-const RENDER_DELAY_MS = 1350; // render ~1.35 s in the past: always between two real fixes
-                              // (a touch of headroom past the 1 Hz interval absorbs arrival jitter)
+const RENDER_DELAY_MS = 1500; // render ~1.5 s in the past: more headroom so typical tracks
+                              // stay BETWEEN two real fixes (interpolating) instead of extrapolating
+const MAX_EXTRAP_MS = 1200;   // hard cap on forward dead-reckoning — bounds the snap-back
+                              // ("rubberband") when a late fix lands behind the guess
 
 interface Track {
   latest: Aircraft;
@@ -69,7 +71,7 @@ export class TrackStore {
   sample(cfg: Config): Visible[] {
     const renderT = Date.now() - RENDER_DELAY_MS;
     const baseMs = Math.max(0, (cfg.trailSeconds ?? 90) * 1000);
-    const extrapMs = Math.max(0, (cfg.maxExtrapolationSec ?? 5) * 1000);
+    const extrapMs = Math.min(MAX_EXTRAP_MS, Math.max(0, (cfg.maxExtrapolationSec ?? 5) * 1000));
     const out: Visible[] = [];
     for (const tr of this.tracks.values()) {
       if (!passesFilter(tr.latest, cfg)) continue;
