@@ -182,7 +182,7 @@ func Default() Config {
 		ShowAirport: true, ShowApproaches: true, ShowFinal: true, ShowTraffic: true,
 		ShowHome: true, ShowRelative: true, HighlightEmergency: true,
 		ShowNotable: true, NotableFlash: true, ShowWinds: true, ShowPhotos: true,
-		ShowDestArc: true, ShowRouteDetail: true, BurnInOrbit: true,
+		ShowDestArc: true, ShowRouteDetail: true, BurnInOrbit: false, // IPS panel — no burn-in risk
 		ShowSpotlight: true, SpotlightRadiusMi: 15, SpotlightLat: 47.617, SpotlightLon: -122.1936,
 		ShowStars: true, ShowSun: true, ShowMoon: true, ShowSatellites: true,
 		StarMagLimit: 2.6,

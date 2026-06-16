@@ -28,6 +28,7 @@ export default function Display() {
 
   const [selected, setSelected] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [orbit, setOrbit] = useState({ x: 0, y: 0 }); // burn-in step offset (kiosk)
 
   // On the Pi kiosk we launch with ?kiosk=1: hide the cursor entirely. On the web
   // we always keep the cursor visible.
@@ -113,6 +114,16 @@ export default function Display() {
     const r = rendererRef.current;
     if (r && !r.onScreen(selected)) { r.select(null); setSelected(null); }
   }, [state.now, selected]);
+
+  // Burn-in: step the canvas to a new offset every 25 s (CSS glides it over 5 s, then
+  // the compositor goes idle) — far cheaper than a continuous animation on the Pi GPU.
+  useEffect(() => {
+    if (!burnIn) { setOrbit({ x: 0, y: 0 }); return; }
+    const pts = [[0, 0], [11, 5], [6, 12], [-8, 9], [-11, -4], [4, -10]];
+    let i = 0;
+    const id = window.setInterval(() => { i = (i + 1) % pts.length; setOrbit({ x: pts[i][0], y: pts[i][1] }); }, 25000);
+    return () => clearInterval(id);
+  }, [burnIn]);
 
   // Pre-fetch photos for the nearest aircraft each frame so the spotlight card is
   // instant when one auto-features or the user taps it. getPhoto caches + dedupes.
@@ -236,16 +247,15 @@ export default function Display() {
 
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
-      {/* Burn-in protection: on the kiosk, drift the whole canvas a few px in a slow
-          150s orbit so static elements never sit on the same pixels. The canvas is
-          oversized so the drift never exposes a black edge. */}
-      <style>{`@keyframes svorbit{0%{transform:translate(0,0)}20%{transform:translate(12px,5px)}40%{transform:translate(6px,12px)}60%{transform:translate(-8px,9px)}80%{transform:translate(-11px,-4px)}100%{transform:translate(0,0)}}`}</style>
+      {/* Burn-in protection: STEP the canvas a few px every 25 s (glide 5 s, then sit
+          still) so static elements never sit on the same pixels — but the compositor is
+          idle between steps, unlike a continuous animation. Oversized so no black edge. */}
       <canvas
         ref={canvasRef}
         style={burnIn
           ? { position: "absolute", top: -16, left: -16, width: "calc(100% + 32px)", height: "calc(100% + 32px)",
               display: "block", touchAction: "none", cursor: isKiosk ? "none" : "grab",
-              animation: "svorbit 150s linear infinite" }
+              transform: `translate(${orbit.x}px, ${orbit.y}px)`, transition: "transform 5s ease-in-out" }
           : { width: "100%", height: "100%", display: "block", touchAction: "none", cursor: isKiosk ? "none" : "grab" }}
         onPointerDown={onDown}
         onPointerMove={onMove}

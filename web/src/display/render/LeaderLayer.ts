@@ -34,10 +34,8 @@ export class LeaderLayer implements Layer {
       const len = Math.hypot(dx, dy);
       if (len > MAX_LEN_PX) { const s = MAX_LEN_PX / len; p1 = { x: p0.x + dx * s, y: p0.y + dy * s }; }
       const rgb: RGB = f.cfg.altitudeColor ? altRamp(a.altBaro ?? 0) : flat;
-      const grad = ctx.createLinearGradient(p0.x, p0.y, p1.x, p1.y);
-      grad.addColorStop(0, `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},0.55)`);
-      grad.addColorStop(1, `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},0)`);
-      ctx.strokeStyle = grad;
+      // Solid stroke (no per-frame gradient alloc) — it's a short tick, doesn't need a fade.
+      ctx.strokeStyle = `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},0.45)`;
       ctx.lineWidth = 1.4;
       ctx.beginPath();
       ctx.moveTo(p0.x, p0.y);
