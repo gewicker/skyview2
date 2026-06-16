@@ -3,6 +3,7 @@
 // interpolated visible set once, and hands a FrameContext to each layer.
 import { Camera, llToWorld, worldToLL } from "./mercator";
 import { TrackStore } from "./TrackStore";
+import { pickStatic } from "./navdata";
 import type { Layer } from "./types";
 import type { Aircraft, Config } from "@shared/types";
 
@@ -27,6 +28,7 @@ export class Renderer {
   private lastCam: Camera | null = null;
   private override: View | null = null;     // transient view during pan/zoom
   private selectedHex = "";
+  private selectedNav = "";                  // tapped navaid/fix/final id
   private releaseTimer = 0;
   private lastInteractAt = 0;                // for the uncap + low-detail window
 
@@ -126,7 +128,17 @@ export class Renderer {
   }
 
   select(hex: string | null): void { this.selectedHex = hex || ""; }
+  selectNav(id: string | null): void { this.selectedNav = id || ""; }
   getView(): View { return this.view(); }
+
+  /** Nearest tappable static feature (navaid/fix/final) to a screen point, honoring
+   *  the overlay toggles. Returns its id or null. Used for tap-to-reveal. */
+  pickStatic(px: number, py: number): string | null {
+    if (!this.lastCam) return null;
+    const cam = this.lastCam;
+    const cfg = this.getConfig();
+    return pickStatic((lat, lon) => cam.project(lat, lon), px, py, !!cfg.showNavaids, !!cfg.showProcedures);
+  }
 
   /** Is this aircraft still tracked AND within (a margin of) the viewport? Used to
    *  auto-despawn the tap card when a contact leaves range or is panned off-screen. */
@@ -171,7 +183,8 @@ export class Renderer {
     const visible = this.store.sample(cfg);
     const f = {
       ctx, cam, cfg, t: now / 1000, dt, w: this.w, h: this.h, dpr: this.dpr,
-      aircraft: visible, view: v, selectedHex: this.selectedHex || undefined, interacting,
+      aircraft: visible, view: v, selectedHex: this.selectedHex || undefined,
+      selectedNavId: this.selectedNav || undefined, interacting,
     };
     for (const l of this.layers) l.draw(f);
   }

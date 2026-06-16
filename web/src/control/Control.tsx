@@ -93,6 +93,17 @@ export default function Control({ config: c, surface, onChange, onPush, onReset,
         </ListRow>
       </ListSection>
 
+      <ListSection title="Navigation (charts)">
+        <ListRow label="Navaids · VOR/fix" first><Switch value={c.showNavaids} onChange={(v) => set({ showNavaids: v })} /></ListRow>
+        <ListRow label="Approach courses"><Switch value={c.showProcedures} onChange={(v) => set({ showProcedures: v })} /></ListRow>
+        {c.showProcedures && (
+          <ListRow label="Chart underlay"><Switch value={c.showProcRaster} onChange={(v) => set({ showProcRaster: v })} /></ListRow>
+        )}
+        {c.showProcedures && c.showProcRaster && (
+          <ListRow label="Underlay opacity"><Slider value={c.procRasterOpacity} min={0.05} max={1} step={0.05} onChange={(v) => set({ procRasterOpacity: v })} /></ListRow>
+        )}
+      </ListSection>
+
       <ListSection title="Trails">
         <ListRow label="Colour" first>
           <Segmented<TrailMode> value={c.trailMode}

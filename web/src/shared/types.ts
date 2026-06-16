@@ -39,6 +39,8 @@ export interface Config {
   showSpotlight: boolean; spotlightRadiusMi: number; spotlightLat: number; spotlightLon: number;
   showStars: boolean; showSun: boolean; showMoon: boolean; showSatellites: boolean;
   starMagLimit: number; skyTimeOffsetMin: number;
+  showNavaids: boolean; showProcedures: boolean;
+  showProcRaster: boolean; procRasterUrl: string; procRasterOpacity: number;
   monitorMode: MonitorMode; lightsOutHour: number; muteUntil: number; showCursor: boolean;
 }
 

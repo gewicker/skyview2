@@ -5,6 +5,8 @@ import { Renderer } from "./render/Renderer";
 import { MapLayer } from "./render/MapLayer";
 import { AirportsLayer } from "./render/AirportsLayer";
 import { ApproachLayer } from "./render/ApproachLayer";
+import { ProcedureLayer } from "./render/ProcedureLayer";
+import { NavaidLayer } from "./render/NavaidLayer";
 import { PlaceLabelsLayer } from "./render/PlaceLabelsLayer";
 import { TrailLayer } from "./render/TrailLayer";
 import { LeaderLayer } from "./render/LeaderLayer";
@@ -27,6 +29,7 @@ export default function Display() {
   const cfgRef = useRef<Config | null>(null);
 
   const [selected, setSelected] = useState<string | null>(null);
+  const [, setSelectedNav] = useState<string | null>(null); // tapped navaid/fix/final
   const [showSettings, setShowSettings] = useState(false);
   const [orbit, setOrbit] = useState({ x: 0, y: 0 }); // burn-in step offset (kiosk)
 
@@ -90,6 +93,8 @@ export default function Display() {
     r.use(new MapLayer());
     r.use(new AirportsLayer());
     r.use(new ApproachLayer());
+    r.use(new ProcedureLayer()); // final-approach vectors (under traffic), off by default
+    r.use(new NavaidLayer());    // VOR roses / fixes (under traffic), off by default
     r.use(new PlaceLabelsLayer());
     r.use(new TrailLayer());
     r.use(new LeaderLayer());
@@ -212,9 +217,16 @@ export default function Display() {
     const r = rendererRef.current;
     if (r) {
       if (size === 1 && drag.current && !drag.current.moved && Date.now() - drag.current.t < 300 && p) {
-        const hex = r.pickAt(p.x, p.y); // tap: select a plane, or deselect on empty
-        r.select(hex);
-        setSelected(hex);
+        // Tap: a plane wins; otherwise a navaid/fix/final (overlay tap-to-reveal); else clear.
+        const hex = r.pickAt(p.x, p.y);
+        if (hex) {
+          r.select(hex); setSelected(hex);
+          r.selectNav(null); setSelectedNav(null);
+        } else {
+          const nid = r.pickStatic(p.x, p.y);
+          r.selectNav(nid); setSelectedNav(nid);
+          r.select(null); setSelected(null);
+        }
       } else if (size >= 1) {
         commit();
       }

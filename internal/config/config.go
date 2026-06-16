@@ -156,6 +156,14 @@ type Config struct {
 	StarMagLimit    float64 `json:"starMagLimit"`
 	SkyTimeOffsetMin float64 `json:"skyTimeOffsetMin"`
 
+	// Navaid + procedure overlays (off by default). Vector data is bundled in the
+	// web app; the optional raster underlay points at a georeferenced FAA chart image.
+	ShowNavaids       bool    `json:"showNavaids"`
+	ShowProcedures    bool    `json:"showProcedures"`
+	ShowProcRaster    bool    `json:"showProcRaster"`
+	ProcRasterURL     string  `json:"procRasterUrl"`
+	ProcRasterOpacity float64 `json:"procRasterOpacity"`
+
 	// Monitor (touch screen).
 	MonitorMode  MonitorMode `json:"monitorMode"`
 	LightsOutHour int        `json:"lightsOutHour"`
@@ -186,6 +194,7 @@ func Default() Config {
 		ShowSpotlight: true, SpotlightRadiusMi: 15, SpotlightLat: 47.617, SpotlightLon: -122.1936,
 		ShowStars: true, ShowSun: true, ShowMoon: true, ShowSatellites: true,
 		StarMagLimit: 2.6,
+		ProcRasterOpacity: 0.5, // overlays off by default; opacity used when raster enabled
 		MonitorMode: "lightsout", LightsOutHour: 23, ShowCursor: false,
 	}
 }

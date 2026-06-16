@@ -45,10 +45,10 @@ export class ApproachLayer implements Layer {
     for (const a of f.aircraft) {
       if (a.onGround) continue;
       if (a.altBaro != null && a.altBaro > 6000) continue; // only low, inbound traffic
-      // If we know the destination, trust it: a plane routed to SEA can only be on
-      // final to SEA — never tag it for BFI/RNT just because it overflies their
-      // extended centerline. A destination we don't track means it's transiting.
-      if (a.destination && !LOCAL_IATA.has(a.destination)) continue;
+      // Geometry decides whether it's on final; the destination is used ONLY to
+      // disambiguate between local fields (see match), never to suppress a tag — the
+      // route DB frequently shows an arrival's outbound city (e.g. "SFO"), so trusting
+      // it to gate tagging wrongly hid genuine finals.
       const m = match(a);
       if (!m) continue;
       const p = f.cam.project(a.lat, a.lon);

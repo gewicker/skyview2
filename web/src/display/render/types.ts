@@ -32,6 +32,9 @@ export interface FrameContext {
   view: { mapCenterLat: number; mapCenterLon: number; mapZoom: number };
   /** Manually selected aircraft (tap), if any — the spotlight pins to it. */
   selectedHex?: string;
+  /** Manually selected static feature (navaid/fix/final) id, if any — the navaid &
+   *  procedure layers draw its highlight + detail card. */
+  selectedNavId?: string;
   /** True while a pan/zoom gesture is active — layers render low-detail (skip the
    *  expensive per-segment trails) and the loop runs uncapped for smoothness. */
   interacting?: boolean;
