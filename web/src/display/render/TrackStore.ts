@@ -6,12 +6,9 @@
 import type { Aircraft, Config } from "@shared/types";
 import type { Sample, Visible } from "./types";
 
-const RENDER_DELAY_MS = 1200; // render ~1.2 s behind the measurement timeline — keeps us
-                              // INTERPOLATING between two real fixes (smooth) almost always
-const MAX_EXTRAP_MS = 700;    // when a track does go stale, gently PREDICT forward along its
-                              // last velocity; the low-pass then glides the correction in when
-                              // the next fix lands, so prediction never snaps ("smooth + fairly
-                              // accurate" — straight flight predicts perfectly; turns ease in)
+const RENDER_DELAY_MS = 1200; // render ~1.2 s behind the measurement timeline — interpolate
+                              // between real fixes when we can; dead-reckon past the newest
+const DEG = Math.PI / 180;
 
 interface Track {
   latest: Aircraft;
@@ -79,11 +76,10 @@ export class TrackStore {
   sample(cfg: Config): Visible[] {
     const renderT = Date.now() - RENDER_DELAY_MS;
     const baseMs = Math.max(0, (cfg.trailSeconds ?? 90) * 1000);
-    const extrapMs = Math.min(MAX_EXTRAP_MS, Math.max(0, (cfg.maxExtrapolationSec ?? 5) * 1000));
     const out: Visible[] = [];
     for (const tr of this.tracks.values()) {
       if (!passesFilter(tr.latest, cfg)) continue;
-      const target = interp(tr.hist, renderT, extrapMs);
+      const target = predictPos(tr.hist, tr.latest.gs, tr.latest.track, renderT);
       if (!target) continue;
       // Critically-damped low-pass toward the (linear) target: smooths the per-fix
       // heading kink and GPS jitter without overshoot. A large gap (reacquired track)
@@ -135,23 +131,16 @@ export class TrackStore {
   }
 }
 
-// Position at t: LINEAR interpolation between the two bracketing fixes (constant
-// velocity per segment — no overshoot, exact at every fix). PAST the newest fix we
-// dead-reckon along the last segment (capped) so sparse/stale tracks coast instead of
-// freezing-then-jumping. The per-fix heading kink is then damped by the low-pass in
-// sample() rather than by a spline (which wiggled around GPS noise).
-function interp(hist: Sample[], t: number, extrapMs: number): { lat: number; lon: number } | null {
+// Position at render time t. BETWEEN two real fixes we linearly interpolate (exact at every
+// fix, smooth). PAST the newest fix we dead-reckon forward at the aircraft's REPORTED velocity
+// (groundspeed + track) so a stale track keeps gliding at its true speed instead of FREEZING —
+// the low-pass in sample() then eases the correction in when the next fix lands. This is what
+// fixes the "glide / pause / glide" stepping: there is no more hard freeze.
+function predictPos(hist: Sample[], gs: number | undefined, track: number | undefined, t: number): { lat: number; lon: number } | null {
   if (hist.length === 0) return null;
-  if (t <= hist[0].t) return hist[0];
+  if (t <= hist[0].t) return { lat: hist[0].lat, lon: hist[0].lon };
   const last = hist[hist.length - 1];
-  if (t >= last.t) {
-    if (hist.length < 2 || extrapMs <= 0) return last;
-    const prev = hist[hist.length - 2];
-    const dt = last.t - prev.t;
-    if (dt <= 0) return last;
-    const k = Math.min(t - last.t, extrapMs) / dt; // capped extrapolation factor
-    return { lat: last.lat + (last.lat - prev.lat) * k, lon: last.lon + (last.lon - prev.lon) * k };
-  }
+  if (t >= last.t) return deadReckon(last, gs, track, t - last.t);
   for (let i = hist.length - 1; i > 0; i--) {
     const a = hist[i - 1], b = hist[i];
     if (t >= a.t && t <= b.t) {
@@ -159,7 +148,19 @@ function interp(hist: Sample[], t: number, extrapMs: number): { lat: number; lon
       return { lat: a.lat + (b.lat - a.lat) * f, lon: a.lon + (b.lon - a.lon) * f };
     }
   }
-  return last;
+  return { lat: last.lat, lon: last.lon };
+}
+
+// Coast forward from a fix along the reported groundspeed/track for `ageMs` (capped so a
+// long-lost track doesn't run away). Straight flight predicts ~perfectly; turns ease in.
+function deadReckon(p: Sample, gs: number | undefined, track: number | undefined, ageMs: number): { lat: number; lon: number } {
+  if (gs == null || track == null || gs <= 0 || ageMs <= 0) return { lat: p.lat, lon: p.lon };
+  const distM = gs * 0.514444 * (Math.min(ageMs, 10000) / 1000); // kt→m/s × s, capped at 10 s
+  const b = track * DEG;
+  return {
+    lat: p.lat + (distM * Math.cos(b)) / 111320,
+    lon: p.lon + (distM * Math.sin(b)) / (111320 * Math.cos(p.lat * DEG)),
+  };
 }
 
 function clamp(v: number, lo: number, hi: number): number {
