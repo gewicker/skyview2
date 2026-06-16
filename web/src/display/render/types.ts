@@ -35,6 +35,10 @@ export interface FrameContext {
   /** Manually selected static feature (navaid/fix/final) id, if any — the navaid &
    *  procedure layers draw its highlight + detail card. */
   selectedNavId?: string;
+  /** Timestamp of the last "dismiss the overhead card" tap (tap on empty space). The
+   *  spotlight layer suppresses its auto placard for the aircraft featured at that moment
+   *  until a different one comes overhead. */
+  spotDismissAt?: number;
   /** True while a pan/zoom gesture is active — layers render low-detail (skip the
    *  expensive per-segment trails) and the loop runs uncapped for smoothness. */
   interacting?: boolean;

@@ -29,6 +29,7 @@ export class Renderer {
   private override: View | null = null;     // transient view during pan/zoom
   private selectedHex = "";
   private selectedNav = "";                  // tapped navaid/fix/final id
+  private spotDismissAt = 0;                  // last "dismiss overhead card" tap
   private releaseTimer = 0;
   private lastInteractAt = 0;                // for the uncap + low-detail window
 
@@ -129,6 +130,8 @@ export class Renderer {
 
   select(hex: string | null): void { this.selectedHex = hex || ""; }
   selectNav(id: string | null): void { this.selectedNav = id || ""; }
+  /** Dismiss the auto overhead (spotlight) card for whoever is featured right now. */
+  dismissSpotlight(): void { this.spotDismissAt = performance.now(); }
   getView(): View { return this.view(); }
 
   /** Nearest tappable static feature (navaid/fix/final) to a screen point, honoring
@@ -184,7 +187,8 @@ export class Renderer {
     const f = {
       ctx, cam, cfg, t: now / 1000, dt, w: this.w, h: this.h, dpr: this.dpr,
       aircraft: visible, view: v, selectedHex: this.selectedHex || undefined,
-      selectedNavId: this.selectedNav || undefined, interacting,
+      selectedNavId: this.selectedNav || undefined,
+      spotDismissAt: this.spotDismissAt || undefined, interacting,
     };
     for (const l of this.layers) l.draw(f);
   }

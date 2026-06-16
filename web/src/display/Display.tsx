@@ -226,6 +226,7 @@ export default function Display() {
           const nid = r.pickStatic(p.x, p.y);
           r.selectNav(nid); setSelectedNav(nid);
           r.select(null); setSelected(null);
+          r.dismissSpotlight(); // tapping off a plane also drops the overhead card
         }
       } else if (size >= 1) {
         commit();
@@ -283,7 +284,7 @@ export default function Display() {
       {/* Rich tap card for a selected aircraft (top-right). */}
       {sel && state.config && (
         <TapCard a={sel} cfg={state.config}
-          onClose={() => { rendererRef.current?.select(null); setSelected(null); }} />
+          onClose={() => { rendererRef.current?.select(null); rendererRef.current?.dismissSpotlight(); setSelected(null); }} />
       )}
 
       {/* On-screen quick controls — auto-hide after inactivity. */}
@@ -301,7 +302,7 @@ export default function Display() {
       </div>
       {selected && (
         <div style={{ position: "absolute", left: "50%", bottom: 16, transform: "translateX(-50%)", ...autoHide(uiVisible) }}>
-          <button onClick={() => { rendererRef.current?.select(null); setSelected(null); }}
+          <button onClick={() => { rendererRef.current?.select(null); rendererRef.current?.dismissSpotlight(); setSelected(null); }}
             style={{ ...btnBase, width: "auto", padding: "0 16px", borderRadius: 22, font: "500 13px system-ui" }}>
             ✕ Deselect
           </button>

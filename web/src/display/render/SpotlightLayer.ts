@@ -17,6 +17,8 @@ export class SpotlightLayer implements Layer {
   readonly name = "spotlight";
   private hex = "";
   private until = 0;
+  private dismissedHex = ""; // overhead card the user tapped away; suppressed until target changes
+  private lastDismiss = 0;
   private sunAt = 0;
   private sunAlt = 45;
   private golden = 0; // 0..1, peaks as the sun crosses the horizon
@@ -38,6 +40,12 @@ export class SpotlightLayer implements Layer {
 
   draw(f: FrameContext): void {
     this.updateGolden(f);
+    // A "dismiss overhead card" tap (tap on empty space) suppresses the auto placard for
+    // whoever is featured at that instant, until a different aircraft comes overhead.
+    if (f.spotDismissAt && f.spotDismissAt !== this.lastDismiss) {
+      this.lastDismiss = f.spotDismissAt;
+      this.dismissedHex = this.hex;
+    }
     const sLat = f.cfg.spotlightLat ?? f.cfg.centerLat;
     const sLon = f.cfg.spotlightLon ?? f.cfg.centerLon;
     const radius = f.cfg.spotlightRadiusMi || 15;
@@ -119,6 +127,10 @@ export class SpotlightLayer implements Layer {
     }
     ctx.restore();
 
+    // Suppress the placard if the user dismissed this exact overhead aircraft; once a
+    // different one is featured, clear the dismissal so its card shows.
+    if (target.hex === this.dismissedHex) return;
+    this.dismissedHex = "";
     this.drawPlacard(f, target, sLat, sLon);
   }
 
