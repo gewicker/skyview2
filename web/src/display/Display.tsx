@@ -5,6 +5,7 @@ import { Renderer } from "./render/Renderer";
 import { MapLayer } from "./render/MapLayer";
 import { AirportsLayer } from "./render/AirportsLayer";
 import { AirportDiagramLayer } from "./render/AirportDiagramLayer";
+import { StaticOverlayLayer } from "./render/StaticOverlayLayer";
 import { NightLightsLayer } from "./render/NightLightsLayer";
 import { ApproachLayer } from "./render/ApproachLayer";
 import { ProcedureLayer } from "./render/ProcedureLayer";
@@ -93,13 +94,15 @@ export default function Display() {
     if (!canvasRef.current) return;
     const r = new Renderer(canvasRef.current, () => cfgRef.current as Config);
     r.use(new MapLayer());
-    r.use(new AirportDiagramLayer()); // taxiways/aprons/buildings (OSM), under the runways
-    r.use(new AirportsLayer());
+    // Static airport geometry (taxiways/aprons/buildings + runways) baked into one cached
+    // buffer keyed on the view — full-res at rest, re-baked only when the view settles.
+    r.use(new StaticOverlayLayer([new AirportDiagramLayer(), new AirportsLayer()],
+      (f) => `${f.cfg.showAirport}|${f.cfg.showApproaches}`));
     r.use(new NightLightsLayer());    // runway/approach lights at night on the active runway
     r.use(new ApproachLayer());
     r.use(new ProcedureLayer()); // final-approach vectors (under traffic), off by default
     r.use(new NavaidLayer());    // VOR roses / fixes (under traffic), off by default
-    r.use(new PlaceLabelsLayer());
+    r.use(new StaticOverlayLayer([new PlaceLabelsLayer()], (f) => f.cfg.mapStyle));
     r.use(new TrailLayer());
     r.use(new LeaderLayer());
     r.use(new AircraftLayer());

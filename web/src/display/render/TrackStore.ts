@@ -79,7 +79,7 @@ export class TrackStore {
     const out: Visible[] = [];
     for (const tr of this.tracks.values()) {
       if (!passesFilter(tr.latest, cfg)) continue;
-      const target = predictPos(tr.hist, tr.latest.gs, tr.latest.track, renderT);
+      const target = predictPos(tr.hist, tr.latest, renderT);
       if (!target) continue;
       // Critically-damped low-pass toward the (linear) target: smooths the per-fix
       // heading kink and GPS jitter without overshoot. A large gap (reacquired track)
@@ -136,11 +136,17 @@ export class TrackStore {
 // (groundspeed + track) so a stale track keeps gliding at its true speed instead of FREEZING —
 // the low-pass in sample() then eases the correction in when the next fix lands. This is what
 // fixes the "glide / pause / glide" stepping: there is no more hard freeze.
-function predictPos(hist: Sample[], gs: number | undefined, track: number | undefined, t: number): { lat: number; lon: number } | null {
+function predictPos(hist: Sample[], a: Aircraft, t: number): { lat: number; lon: number } | null {
   if (hist.length === 0) return null;
   if (t <= hist[0].t) return { lat: hist[0].lat, lon: hist[0].lon };
   const last = hist[hist.length - 1];
-  if (t >= last.t) return deadReckon(last, gs, track, t - last.t);
+  if (t >= last.t) {
+    // On the GROUND, ADS-B surface track is noisy and taxiing is slow/stop-start, so
+    // dead-reckoning makes it veer — HOLD the last fix until the next one instead. (Airborne
+    // keeps coasting at velocity.) Between fixes it still interpolates smoothly either way.
+    if (a.onGround) return { lat: last.lat, lon: last.lon };
+    return deadReckon(last, a.gs, a.track, t - last.t);
+  }
   for (let i = hist.length - 1; i > 0; i--) {
     const a = hist[i - 1], b = hist[i];
     if (t >= a.t && t <= b.t) {

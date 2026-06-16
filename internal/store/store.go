@@ -7,6 +7,7 @@ package store
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -29,8 +30,24 @@ func NewConfig(path string) *Config {
 	c := &Config{cfg: config.Default(), path: path}
 	if b, err := os.ReadFile(path); err == nil {
 		_ = json.Unmarshal(b, &c.cfg) // partial/older files merge onto defaults
+		migrateHome(&c.cfg)
 	}
 	return c
+}
+
+// migrateHome: one-time, idempotent correction of the old approximate Bellevue centre
+// (47.617, -122.1936) to the exact geocoded home, without disturbing any other saved
+// setting. Re-running is a no-op once corrected.
+func migrateHome(cfg *config.Config) {
+	const oldLat, oldLon = 47.617, -122.1936
+	const newLat, newLon = 47.618431, -122.191076
+	near := func(a, b float64) bool { return math.Abs(a-b) < 1e-4 }
+	if near(cfg.CenterLat, oldLat) && near(cfg.CenterLon, oldLon) {
+		cfg.CenterLat, cfg.CenterLon = newLat, newLon
+		if near(cfg.SpotlightLat, oldLat) && near(cfg.SpotlightLon, oldLon) {
+			cfg.SpotlightLat, cfg.SpotlightLon = newLat, newLon
+		}
+	}
 }
 
 // Get returns a copy of the current config.
