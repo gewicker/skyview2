@@ -119,5 +119,5 @@ func parseSnapshot(body []byte, nowMs float64) (Snapshot, error) {
 			out = append(out, *ac)
 		}
 	}
-	return Snapshot{Now: nowMs, Aircraft: out}, nil
+	return Snapshot{Now: nowMs, SourceNow: f.Now, Aircraft: out}, nil
 }

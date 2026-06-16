@@ -7,8 +7,9 @@ import "github.com/gewicker/skyview2/internal/aircraft"
 
 // Snapshot is one moment of the sky.
 type Snapshot struct {
-	Now      float64             `json:"now"`
-	Aircraft []aircraft.Aircraft `json:"aircraft"`
+	Now       float64             `json:"now"`       // our fetch/arrival time (ms)
+	SourceNow float64             `json:"sourceNow"` // the decoder's own "now" — advances once per write; used to dedupe broadcasts
+	Aircraft  []aircraft.Aircraft `json:"aircraft"`
 }
 
 // Source yields the latest snapshot on demand.

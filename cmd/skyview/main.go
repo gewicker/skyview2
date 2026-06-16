@@ -100,13 +100,25 @@ func main() {
 	go func() {
 		t := time.NewTicker(opts.PollInterval)
 		defer t.Stop()
+		var lastSrc float64
+		lastBeat := time.Now()
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-t.C:
+				snap := radio.Latest()
+				// Only enrich + broadcast when the decoder actually wrote a new snapshot
+				// (its "now" advanced), or as a ~1 Hz heartbeat (late API merges + WS
+				// keepalive). Lets us poll at 250 ms for low latency without 4× the CPU
+				// and without re-sending duplicate frames.
+				if snap.SourceNow == lastSrc && time.Since(lastBeat) < time.Second {
+					continue
+				}
+				lastSrc = snap.SourceNow
+				lastBeat = time.Now()
 				now := float64(time.Now().UnixMilli())
-				list := radio.Latest().Aircraft
+				list := snap.Aircraft
 				if apiSrc != nil {
 					list = feed.MergeSources(list, apiSrc.Latest().Aircraft)
 				}

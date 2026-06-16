@@ -19,7 +19,7 @@ import (
 type Options struct {
 	// RadioURL is the dump1090/readsb aircraft.json (env AIRCRAFT_JSON_URL).
 	RadioURL string
-	// PollInterval is the radio poll cadence (env POLL_MS, default 1s).
+	// PollInterval is the radio poll cadence (env POLL_MS, default 250ms).
 	PollInterval time.Duration
 
 	// --- API supplement (ported config; wiring deferred to the optimal pass) ---
@@ -42,7 +42,7 @@ type Options struct {
 func DefaultOptions() Options {
 	return Options{
 		RadioURL:        "http://localhost:8080/aircraft.json",
-		PollInterval:    time.Second, // match dump1090's 1 Hz write — steady fix timing (off-phase faster polling jitters the interpolation)
+		PollInterval:    250 * time.Millisecond, // poll fast to catch each 1 Hz write promptly; broadcasts dedupe on the decoder's own timestamp, so latency drops without the old off-phase jitter
 		APIURLTemplate:  "https://api.airplanes.live/v2/point/{lat}/{lon}/{r}",
 		SupplementAPI:   true,
 		APIPollInterval: 4 * time.Second,

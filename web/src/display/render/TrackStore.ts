@@ -6,8 +6,9 @@
 import type { Aircraft, Config } from "@shared/types";
 import type { Sample, Visible } from "./types";
 
-const RENDER_DELAY_MS = 1500; // render ~1.5 s in the past: more headroom so typical tracks
-                              // stay BETWEEN two real fixes (interpolating) instead of extrapolating
+const RENDER_DELAY_MS = 1100; // render ~1.1 s in the past — enough to stay BETWEEN two real
+                              // fixes now that the server pushes each write within ~250 ms
+                              // (lower = more responsive; too low = extrapolation/rubberband)
 const MAX_EXTRAP_MS = 1200;   // hard cap on forward dead-reckoning — bounds the snap-back
                               // ("rubberband") when a late fix lands behind the guess
 
@@ -26,7 +27,7 @@ interface Track {
   transitLon?: number;
 }
 
-const SMOOTH_TAU = 0.22; // s — low-pass time constant; damps the per-fix kink & GPS jitter
+const SMOOTH_TAU = 0.16; // s — low-pass time constant; damps the per-fix kink & GPS jitter (lower = snappier)
 
 export class TrackStore {
   private tracks = new Map<string, Track>();
