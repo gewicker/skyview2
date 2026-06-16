@@ -101,10 +101,12 @@ function redNight(ctx: CanvasRenderingContext2D, w: number, h: number): void {
   // glow stay visible. Independent of the day Brightness slider so the vibrant evening
   // isn't affected. (Tune the 0.5 if it needs to be darker/lighter.)
   ctx.globalCompositeOperation = "multiply";
+  // Red night-vision tint (keeps red luminance so planes glow).
   ctx.fillStyle = "rgba(255,95,68,1)";
   ctx.fillRect(0, 0, w, h);
-  ctx.globalCompositeOperation = "source-over";
-  ctx.fillStyle = "rgba(14,0,0,0.5)";
+  // Darken by MULTIPLY (not a flat black blend) so contrast is preserved — the map goes
+  // near-black while bright aircraft/airport glow stay punchy. Doesn't light the room.
+  ctx.fillStyle = "rgba(120,120,120,1)";
   ctx.fillRect(0, 0, w, h);
   ctx.restore();
 }
