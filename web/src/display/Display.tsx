@@ -4,6 +4,7 @@ import { useStream } from "../lib/useStream";
 import { Renderer } from "./render/Renderer";
 import { MapLayer } from "./render/MapLayer";
 import { AirportsLayer } from "./render/AirportsLayer";
+import { AirportDiagramLayer } from "./render/AirportDiagramLayer";
 import { ApproachLayer } from "./render/ApproachLayer";
 import { ProcedureLayer } from "./render/ProcedureLayer";
 import { NavaidLayer } from "./render/NavaidLayer";
@@ -91,6 +92,7 @@ export default function Display() {
     if (!canvasRef.current) return;
     const r = new Renderer(canvasRef.current, () => cfgRef.current as Config);
     r.use(new MapLayer());
+    r.use(new AirportDiagramLayer()); // taxiways/aprons/buildings (OSM), under the runways
     r.use(new AirportsLayer());
     r.use(new ApproachLayer());
     r.use(new ProcedureLayer()); // final-approach vectors (under traffic), off by default
