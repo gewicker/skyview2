@@ -45,7 +45,7 @@ export class AtmosphereLayer implements Layer {
     // Visible red night-vision view (v1-style) — stays READABLE by a bed, not black.
     // Used for the manual "red" mode and for the lights-out night/mute window.
     if (mode === "red" || (mode === "lightsout" && (this.lightsOut || manualMute))) {
-      redNight(ctx, w, h, f.cfg.brightness ?? 1);
+      redNight(ctx, w, h);
       return;
     }
 
@@ -94,16 +94,17 @@ export class AtmosphereLayer implements Layer {
 // Visible red night-vision wash (v1-style): multiply to red (drops blue/green light)
 // then a LIGHT dim so aircraft + the airport glow stay clearly readable by a bed. The
 // brightness slider trims further. Deliberately not near-black.
-function redNight(ctx: CanvasRenderingContext2D, w: number, h: number, brightness: number): void {
+function redNight(ctx: CanvasRenderingContext2D, w: number, h: number): void {
   ctx.save();
-  // Multiply to red but keep more luminance so it stays vibrant/readable, then only a
-  // light dim at full brightness. The brightness slider takes it down toward sleep.
+  // After-bedtime view: multiply to red (keeps red luminance so aircraft still glow),
+  // then a FIXED moderate dim — dark enough not to light the room, but planes/airport
+  // glow stay visible. Independent of the day Brightness slider so the vibrant evening
+  // isn't affected. (Tune the 0.5 if it needs to be darker/lighter.)
   ctx.globalCompositeOperation = "multiply";
-  ctx.fillStyle = "rgba(255,90,64,1)";
+  ctx.fillStyle = "rgba(255,95,68,1)";
   ctx.fillRect(0, 0, w, h);
   ctx.globalCompositeOperation = "source-over";
-  const d = clamp(0.05 + (1 - clamp(brightness, 0, 1)) * 0.62, 0.03, 0.75);
-  ctx.fillStyle = `rgba(12,0,0,${d.toFixed(3)})`;
+  ctx.fillStyle = "rgba(14,0,0,0.5)";
   ctx.fillRect(0, 0, w, h);
   ctx.restore();
 }
