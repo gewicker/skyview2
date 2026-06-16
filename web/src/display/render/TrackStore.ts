@@ -6,7 +6,8 @@
 import type { Aircraft, Config } from "@shared/types";
 import type { Sample, Visible } from "./types";
 
-const RENDER_DELAY_MS = 1150; // render just over the ~1 Hz fix interval in the past
+const RENDER_DELAY_MS = 1350; // render ~1.35 s in the past: always between two real fixes
+                              // (a touch of headroom past the 1 Hz interval absorbs arrival jitter)
 
 interface Track {
   latest: Aircraft;
@@ -77,9 +78,12 @@ export class TrackStore {
   }
 }
 
-// Position at t: interpolate between the two bracketing fixes; PAST the newest fix,
-// dead-reckon along the last segment's velocity (capped) so sparse/stale fixes glide
-// instead of freezing-then-jumping (the v1 behaviour — this kills the robotic look).
+// Position at t. Between the two bracketing fixes we follow a Catmull-Rom spline
+// through the four surrounding fixes (p0..p3) rather than a straight line: the curve
+// passes EXACTLY through every real fix (no accuracy loss) but has a continuous
+// heading across them, so 1 Hz traffic glides through turns instead of kinking once
+// per second. PAST the newest fix we dead-reckon along the last segment (capped) so
+// sparse/stale tracks coast instead of freezing-then-jumping.
 function interp(hist: Sample[], t: number, extrapMs: number): { lat: number; lon: number } | null {
   if (hist.length === 0) return null;
   if (t <= hist[0].t) return hist[0];
@@ -93,13 +97,25 @@ function interp(hist: Sample[], t: number, extrapMs: number): { lat: number; lon
     return { lat: last.lat + (last.lat - prev.lat) * k, lon: last.lon + (last.lon - prev.lon) * k };
   }
   for (let i = hist.length - 1; i > 0; i--) {
-    const a = hist[i - 1], b = hist[i];
-    if (t >= a.t && t <= b.t) {
-      const f = b.t === a.t ? 0 : (t - a.t) / (b.t - a.t);
-      return { lat: a.lat + (b.lat - a.lat) * f, lon: a.lon + (b.lon - a.lon) * f };
+    const p1 = hist[i - 1], p2 = hist[i];
+    if (t >= p1.t && t <= p2.t) {
+      const f = p2.t === p1.t ? 0 : (t - p1.t) / (p2.t - p1.t);
+      const p0 = hist[i - 2] ?? p1; // clamp endpoints when neighbours are missing
+      const p3 = hist[i + 1] ?? p2;
+      return {
+        lat: catmullRom(p0.lat, p1.lat, p2.lat, p3.lat, f),
+        lon: catmullRom(p0.lon, p1.lon, p2.lon, p3.lon, f),
+      };
     }
   }
   return last;
+}
+
+// Uniform Catmull-Rom: smooth (C1) through p1→p2, exact at the endpoints (f=0→p1,
+// f=1→p2). 1 Hz GPS fixes are near-evenly spaced, so uniform parameterisation is stable.
+function catmullRom(a: number, b: number, c: number, d: number, f: number): number {
+  const f2 = f * f, f3 = f2 * f;
+  return 0.5 * (2 * b + (-a + c) * f + (2 * a - 5 * b + 4 * c - d) * f2 + (-a + 3 * b - 3 * c + d) * f3);
 }
 
 function clamp(v: number, lo: number, hi: number): number {
