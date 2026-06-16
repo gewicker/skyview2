@@ -13,7 +13,12 @@ interface Track {
   latest: Aircraft;
   hist: Sample[];
   lastSeen: number;
+  rLat?: number; // smoothed (low-pass) render position + the render-clock it's valid at
+  rLon?: number;
+  rT?: number;
 }
+
+const SMOOTH_TAU = 0.22; // s — low-pass time constant; damps the per-fix kink & GPS jitter
 
 export class TrackStore {
   private tracks = new Map<string, Track>();
@@ -52,8 +57,17 @@ export class TrackStore {
     const out: Visible[] = [];
     for (const tr of this.tracks.values()) {
       if (!passesFilter(tr.latest, cfg)) continue;
-      const pos = interp(tr.hist, renderT, extrapMs);
-      if (!pos) continue;
+      const target = interp(tr.hist, renderT, extrapMs);
+      if (!target) continue;
+      // Critically-damped low-pass toward the (linear) target: smooths the per-fix
+      // heading kink and GPS jitter without overshoot. A large gap (reacquired track)
+      // gives alpha→1, i.e. it snaps rather than drifting. Advanced once per render tick.
+      let pos = target;
+      if (tr.rLat != null && tr.rLon != null && tr.rT != null && renderT > tr.rT) {
+        const alpha = 1 - Math.exp(-(renderT - tr.rT) / 1000 / SMOOTH_TAU);
+        pos = { lat: tr.rLat + (target.lat - tr.rLat) * alpha, lon: tr.rLon + (target.lon - tr.rLon) * alpha };
+      }
+      if (tr.rT == null || renderT >= tr.rT) { tr.rLat = pos.lat; tr.rLon = pos.lon; tr.rT = renderT; }
       // Length scales with groundspeed (on top of the time window already making
       // distance ∝ speed): fast traffic streaks, slow/parked traffic gets a stub.
       const gs = tr.latest.gs ?? 0;
@@ -78,12 +92,11 @@ export class TrackStore {
   }
 }
 
-// Position at t. Between the two bracketing fixes we follow a Catmull-Rom spline
-// through the four surrounding fixes (p0..p3) rather than a straight line: the curve
-// passes EXACTLY through every real fix (no accuracy loss) but has a continuous
-// heading across them, so 1 Hz traffic glides through turns instead of kinking once
-// per second. PAST the newest fix we dead-reckon along the last segment (capped) so
-// sparse/stale tracks coast instead of freezing-then-jumping.
+// Position at t: LINEAR interpolation between the two bracketing fixes (constant
+// velocity per segment — no overshoot, exact at every fix). PAST the newest fix we
+// dead-reckon along the last segment (capped) so sparse/stale tracks coast instead of
+// freezing-then-jumping. The per-fix heading kink is then damped by the low-pass in
+// sample() rather than by a spline (which wiggled around GPS noise).
 function interp(hist: Sample[], t: number, extrapMs: number): { lat: number; lon: number } | null {
   if (hist.length === 0) return null;
   if (t <= hist[0].t) return hist[0];
@@ -97,25 +110,13 @@ function interp(hist: Sample[], t: number, extrapMs: number): { lat: number; lon
     return { lat: last.lat + (last.lat - prev.lat) * k, lon: last.lon + (last.lon - prev.lon) * k };
   }
   for (let i = hist.length - 1; i > 0; i--) {
-    const p1 = hist[i - 1], p2 = hist[i];
-    if (t >= p1.t && t <= p2.t) {
-      const f = p2.t === p1.t ? 0 : (t - p1.t) / (p2.t - p1.t);
-      const p0 = hist[i - 2] ?? p1; // clamp endpoints when neighbours are missing
-      const p3 = hist[i + 1] ?? p2;
-      return {
-        lat: catmullRom(p0.lat, p1.lat, p2.lat, p3.lat, f),
-        lon: catmullRom(p0.lon, p1.lon, p2.lon, p3.lon, f),
-      };
+    const a = hist[i - 1], b = hist[i];
+    if (t >= a.t && t <= b.t) {
+      const f = b.t === a.t ? 0 : (t - a.t) / (b.t - a.t);
+      return { lat: a.lat + (b.lat - a.lat) * f, lon: a.lon + (b.lon - a.lon) * f };
     }
   }
   return last;
-}
-
-// Uniform Catmull-Rom: smooth (C1) through p1→p2, exact at the endpoints (f=0→p1,
-// f=1→p2). 1 Hz GPS fixes are near-evenly spaced, so uniform parameterisation is stable.
-function catmullRom(a: number, b: number, c: number, d: number, f: number): number {
-  const f2 = f * f, f3 = f2 * f;
-  return 0.5 * (2 * b + (-a + c) * f + (2 * a - 5 * b + 4 * c - d) * f2 + (-a + 3 * b - 3 * c + d) * f3);
 }
 
 function clamp(v: number, lo: number, hi: number): number {
