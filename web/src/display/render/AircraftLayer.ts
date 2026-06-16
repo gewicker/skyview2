@@ -42,7 +42,8 @@ export class AircraftLayer implements Layer {
   draw(f: FrameContext): void {
     const ctx = f.ctx;
     // Airborne aircraft read larger (0.75×) so they stand out on a small panel; ground
-    // traffic is shrunk further below so airports still read as one ball of light.
+    // traffic is drawn as crisp little chevrons/dots (see drawGroundMarker) so a busy
+    // ramp reads as distinct aircraft instead of one orange blob.
     const base = (f.cfg.glyphSizePx ?? 18) * 0.75;
     ctx.save();
     ctx.font = "600 12px system-ui, sans-serif";
@@ -64,21 +65,27 @@ export class AircraftLayer implements Layer {
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.rotate(((a.track ?? 0) + (f.cfg.mapRotationDeg ?? 0)) * DEG);
-      if (!f.interacting) {
-        ctx.globalCompositeOperation = "lighter";
-        ctx.fillStyle = `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},${ground ? 0.06 : 0.09})`;
-        ctx.beginPath();
-        ctx.arc(0, 0, glowS * 2.0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},${ground ? 0.09 : 0.13})`;
-        ctx.beginPath();
-        ctx.arc(0, 0, glowS * 1.15, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalCompositeOperation = "source-over";
+      if (ground) {
+        // Crisp heading-aware chevron (taxiing) or a small dot (parked) — no additive
+        // glow, so individual surface aircraft stay distinct instead of blurring together.
+        drawGroundMarker(ctx, base, a.gs ?? 0, a.hex === f.selectedHex);
+      } else {
+        if (!f.interacting) {
+          ctx.globalCompositeOperation = "lighter";
+          ctx.fillStyle = `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},0.09)`;
+          ctx.beginPath();
+          ctx.arc(0, 0, glowS * 2.0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},0.13)`;
+          ctx.beginPath();
+          ctx.arc(0, 0, glowS * 1.15, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalCompositeOperation = "source-over";
+        }
+        const sprite = getGlyphSprite(kind, rgb, alpha, glyphS, f.dpr);
+        ctx.drawImage(sprite.canvas, -sprite.half, -sprite.half, sprite.half * 2, sprite.half * 2);
+        if (hasSpinners(kind)) drawGlyphSpinners(ctx, kind, glyphS, rgb, alpha, f.t, seedFor(a.hex));
       }
-      const sprite = getGlyphSprite(kind, rgb, alpha, glyphS, f.dpr);
-      ctx.drawImage(sprite.canvas, -sprite.half, -sprite.half, sprite.half * 2, sprite.half * 2);
-      if (hasSpinners(kind)) drawGlyphSpinners(ctx, kind, glyphS, rgb, alpha, f.t, seedFor(a.hex));
       ctx.restore();
 
       // Labels: airborne always; ground only when explicitly selected (declutters airports).
@@ -224,6 +231,45 @@ function labelLines(a: Visible, cfg: Config): string[] {
     else if (a.destination) lines.push("→ " + a.destination);
   }
   return lines;
+}
+
+// Ground traffic marker, drawn in the already-rotated frame so "up" (−y) is the
+// aircraft's track. A taxiing aircraft gets a crisp directional chevron; a parked one
+// (≈stationary) a small dot. Muted amber + a thin dark edge keeps each one legible on
+// the bright apron without the old additive-glow blob.
+function drawGroundMarker(ctx: CanvasRenderingContext2D, base: number, gs: number, sel: boolean): void {
+  const fill = sel ? "rgba(255,201,120,0.98)" : "rgba(212,150,86,0.95)";
+  ctx.lineJoin = "round";
+  if (gs >= 3) {
+    const r = Math.max(4.5, base * 0.42), w = r * 0.7;
+    ctx.beginPath();
+    ctx.moveTo(0, -r);
+    ctx.lineTo(w, r * 0.72);
+    ctx.lineTo(0, r * 0.28);
+    ctx.lineTo(-w, r * 0.72);
+    ctx.closePath();
+    ctx.strokeStyle = "rgba(0,0,0,0.45)";
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.fillStyle = fill;
+    ctx.fill();
+  } else {
+    const r = Math.max(2.4, base * 0.22);
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(0,0,0,0.4)";
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+  if (sel) {
+    ctx.strokeStyle = "rgba(255,210,120,0.9)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, (gs >= 3 ? base * 0.42 : base * 0.22) + 5, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {

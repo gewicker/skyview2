@@ -15,6 +15,7 @@ interface End {
   tLat: number; // touchdown threshold
   tLon: number;
   course: number; // landing heading, deg
+  elevFt: number; // field elevation MSL (threshold) — for the glidepath fit
 }
 
 // Precompute both landing directions for every runway once.
@@ -24,12 +25,15 @@ const ENDS: End[] = (() => {
     for (const rw of ap.runways) {
       const a = bearing(rw.le[0], rw.le[1], rw.he[0], rw.he[1]); // le→he
       const b = (a + 180) % 360;
-      out.push({ icao: ap.icao, iata: ap.iata, ident: rw.leIdent, tLat: rw.le[0], tLon: rw.le[1], course: a });
-      out.push({ icao: ap.icao, iata: ap.iata, ident: rw.heIdent, tLat: rw.he[0], tLon: rw.he[1], course: b });
+      out.push({ icao: ap.icao, iata: ap.iata, ident: rw.leIdent, tLat: rw.le[0], tLon: rw.le[1], course: a, elevFt: ap.elevFt });
+      out.push({ icao: ap.icao, iata: ap.iata, ident: rw.heIdent, tLat: rw.he[0], tLon: rw.he[1], course: b, elevFt: ap.elevFt });
     }
   }
   return out;
 })();
+
+const GP_FT_PER_NM = 318;   // 3.00° glidepath ≈ 318 ft per NM
+const GP_TOL_FT = 900;      // reject a candidate the aircraft is wildly off the glidepath for
 
 const LOCAL_IATA = new Set(AIRPORTS.map((ap) => ap.iata));
 
@@ -84,13 +88,17 @@ export class ApproachLayer implements Layer {
 
 interface Match { icao: string; ident: string; miles: number }
 
+// Pick the runway an aircraft is actually on final to. Lateral alignment qualifies a
+// candidate; the DEFINITIVE separation between near/far collinear runways (BFI 14R vs
+// SEA 16R share a centerline) is the GLIDEPATH FIT — at a given point the near-field
+// arrival is far lower than the far-field one. We score each candidate by how close the
+// aircraft's altitude is to that runway's 3° glidepath, then let a known local
+// destination act only as a gentle tiebreak (never override the physics).
 function match(a: Visible): Match | null {
   let best: Match | null = null;
-  // When the destination is known and local, only consider that airport's runways.
-  const ends = a.destination && LOCAL_IATA.has(a.destination)
-    ? ENDS.filter((e) => e.iata === a.destination)
-    : ENDS;
-  for (const e of ends) {
+  let bestScore = Infinity;
+  const destLocal = a.destination && LOCAL_IATA.has(a.destination) ? a.destination : null;
+  for (const e of ENDS) {
     // Local east/north metres from the threshold.
     const east = (a.lon - e.tLon) * Math.cos(e.tLat * DEG) * 111320;
     const north = (a.lat - e.tLat) * 110540;
@@ -103,11 +111,24 @@ function match(a: Visible): Match | null {
     if (latOff > 0.7 * MI) continue;
     // Heading must be flying the course (within ~28°).
     if (a.track != null) {
-      let d = Math.abs(((a.track - e.course + 540) % 360) - 180);
+      const d = Math.abs(((a.track - e.course + 540) % 360) - 180);
       if (d > 28) continue;
     }
     const miles = dist / MI;
-    if (!best || miles < best.miles) best = { icao: e.icao, ident: e.ident, miles };
+
+    // Glidepath fit: expected altitude on a 3° path at this distance vs the real one.
+    let score: number;
+    if (a.altBaro != null) {
+      const gpAlt = e.elevFt + miles * GP_FT_PER_NM;
+      const altErr = Math.abs(a.altBaro - gpAlt);
+      if (altErr > GP_TOL_FT) continue; // not on THIS runway's glidepath — rule it out
+      score = altErr;
+    } else {
+      score = miles * GP_FT_PER_NM; // no altitude: fall back to "nearest threshold"
+    }
+    if (destLocal && e.iata === destLocal) score *= 0.6; // gentle prior toward stated dest
+
+    if (score < bestScore) { bestScore = score; best = { icao: e.icao, ident: e.ident, miles }; }
   }
   return best;
 }
