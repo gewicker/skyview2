@@ -42,7 +42,7 @@ type Options struct {
 func DefaultOptions() Options {
 	return Options{
 		RadioURL:        "http://localhost:8080/aircraft.json",
-		PollInterval:    500 * time.Millisecond, // 2×/s: catch each 1 Hz JSON write promptly (lower latency, steadier fixes)
+		PollInterval:    time.Second, // match dump1090's 1 Hz write — steady fix timing (off-phase faster polling jitters the interpolation)
 		APIURLTemplate:  "https://api.airplanes.live/v2/point/{lat}/{lon}/{r}",
 		SupplementAPI:   true,
 		APIPollInterval: 4 * time.Second,
