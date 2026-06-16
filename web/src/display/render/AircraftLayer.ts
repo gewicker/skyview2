@@ -13,6 +13,8 @@ import { AIRPORTS } from "./airports";
 const DEG = Math.PI / 180;
 const LINE_H = 14;
 const GROUND_RGB: RGB = [200, 122, 60]; // subdued warm — ground/apron
+const MORPH_MS = 700;    // glyph crossfade between ground chevron and airborne silhouette
+const FLOURISH_MS = 1300; // one-time touchdown ripple / liftoff glow
 
 // Reference point (runway-threshold centroid) + IATA for each local field. ADS-B
 // never transmits destination; the callsign→route DB (adsbdb) gives the scheduled
@@ -72,34 +74,34 @@ export class AircraftLayer implements Layer {
       const full = base * GLYPH_SCALE[kind];
       const glyphS = ground ? full * 0.5 : full;       // small footprint on the ground
       const glowS = ground ? full * 0.85 : full;        // glow stays sized so clusters merge
-      const alpha = ground ? 0.42 : 1;                  // dim individually; sum into a mass
       const rgb: RGB = !f.cfg.altitudeColor
         ? hexRGB(f.cfg.palette.glyph || "#ff9a3c")
         : ground ? GROUND_RGB : altRamp(a.altBaro ?? 0);
+
+      // Takeoff/landing morph: crossfade + scale between the ground chevron and the
+      // airborne silhouette over MORPH_MS, so a departure grows up off the surface and an
+      // arrival settles onto it instead of popping.
+      const tAge = a.transitAge;
+      const tp = tAge != null && tAge >= 0 && tAge < MORPH_MS ? tAge / MORPH_MS : 1;
+      const morphing = tp < 1;
 
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.rotate(((a.track ?? 0) + (f.cfg.mapRotationDeg ?? 0)) * DEG);
       if (ground) {
-        // Crisp heading-aware chevron (taxiing) or a small dot (parked) — no additive
-        // glow, so individual surface aircraft stay distinct instead of blurring together.
-        drawGroundMarker(ctx, base, a.gs ?? 0, a.hex === f.selectedHex);
-      } else {
-        if (!f.interacting) {
-          ctx.globalCompositeOperation = "lighter";
-          ctx.fillStyle = `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},0.09)`;
-          ctx.beginPath();
-          ctx.arc(0, 0, glowS * 2.0, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},0.13)`;
-          ctx.beginPath();
-          ctx.arc(0, 0, glowS * 1.15, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.globalCompositeOperation = "source-over";
+        if (morphing && a.transitGround === true) {
+          this.airborne(f, kind, rgb, glyphS, glowS, 1 - tp, seedFor(a.hex), 1 + 0.25 * (1 - tp));
+          drawGroundMarker(ctx, base, a.gs ?? 0, a.hex === f.selectedHex, tp, 0.6 + 0.4 * tp);
+        } else {
+          drawGroundMarker(ctx, base, a.gs ?? 0, a.hex === f.selectedHex);
         }
-        const sprite = getGlyphSprite(kind, rgb, alpha, glyphS, f.dpr);
-        ctx.drawImage(sprite.canvas, -sprite.half, -sprite.half, sprite.half * 2, sprite.half * 2);
-        if (hasSpinners(kind)) drawGlyphSpinners(ctx, kind, glyphS, rgb, alpha, f.t, seedFor(a.hex));
+      } else {
+        if (morphing && a.transitGround === false) {
+          drawGroundMarker(ctx, base, a.gs ?? 0, a.hex === f.selectedHex, 1 - tp, 1);
+          this.airborne(f, kind, rgb, glyphS, glowS, tp, seedFor(a.hex), 0.6 + 0.4 * tp);
+        } else {
+          this.airborne(f, kind, rgb, glyphS, glowS, 1, seedFor(a.hex), 1);
+        }
       }
       ctx.restore();
 
@@ -121,6 +123,15 @@ export class AircraftLayer implements Layer {
 
     drawLabels(ctx, jobs, f);
     ctx.restore();
+
+    // Takeoff/landing flourish: a one-time cue anchored at the event location (which the
+    // glyph has since flown on from). Only active for ~FLOURISH_MS after the event.
+    for (const a of f.aircraft) {
+      const age = a.transitAge;
+      if (age == null || age < 0 || age >= FLOURISH_MS || a.transitLat == null || a.transitLon == null) continue;
+      const q = f.cam.project(a.transitLat, a.transitLon);
+      drawFlourish(ctx, q.x, q.y, age / FLOURISH_MS, a.transitGround === true);
+    }
 
     // Home beacon (respects the Home toggle). Gold so it stands out from the cyan UI
     // accents and the altitude-coloured traffic.
@@ -151,6 +162,60 @@ export class AircraftLayer implements Layer {
     ctx.textAlign = "left";
     ctx.restore();
   }
+
+  // Airborne glyph: additive glow (skipped mid-gesture) + the cached silhouette sprite +
+  // any prop/rotor spinners. `fade`/`scale` drive the takeoff/landing morph.
+  private airborne(
+    f: FrameContext, kind: ReturnType<typeof classifyGlyph>, rgb: RGB,
+    glyphS: number, glowS: number, fade: number, seed: number, scale: number,
+  ): void {
+    const ctx = f.ctx;
+    ctx.save();
+    if (fade < 1) ctx.globalAlpha = fade;
+    if (scale !== 1) ctx.scale(scale, scale);
+    if (!f.interacting) {
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},0.09)`;
+      ctx.beginPath(); ctx.arc(0, 0, glowS * 2.0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},0.13)`;
+      ctx.beginPath(); ctx.arc(0, 0, glowS * 1.15, 0, Math.PI * 2); ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
+    }
+    const sprite = getGlyphSprite(kind, rgb, 1, glyphS, f.dpr);
+    ctx.drawImage(sprite.canvas, -sprite.half, -sprite.half, sprite.half * 2, sprite.half * 2);
+    if (hasSpinners(kind)) drawGlyphSpinners(ctx, kind, glyphS, rgb, 1, f.t, seed);
+    ctx.restore();
+  }
+}
+
+// One-time takeoff/landing flourish in screen space. Landing: a cool expanding ripple
+// (touchdown). Takeoff: a warm additive glow kick (liftoff). fp is 0→1 over FLOURISH_MS.
+function drawFlourish(ctx: CanvasRenderingContext2D, x: number, y: number, fp: number, landing: boolean): void {
+  ctx.save();
+  if (landing) {
+    for (let i = 0; i < 2; i++) {
+      const lp = fp - i * 0.2;
+      if (lp <= 0 || lp >= 1) continue;
+      const e = 1 - (1 - lp) * (1 - lp);
+      ctx.strokeStyle = `rgba(150,225,255,${((1 - lp) * 0.7).toFixed(3)})`;
+      ctx.lineWidth = 2 - lp;
+      ctx.beginPath();
+      ctx.arc(x, y, 5 + e * 30, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  } else {
+    const e = 1 - (1 - fp) * (1 - fp);
+    const r = 6 + e * 24;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(255,190,110,${((1 - fp) * 0.5).toFixed(3)})`);
+    g.addColorStop(1, "rgba(255,170,90,0)");
+    ctx.globalCompositeOperation = "lighter";
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 interface LabelJob {
@@ -254,11 +319,14 @@ function labelLines(a: Visible, cfg: Config): string[] {
 // aircraft's track. A taxiing aircraft gets a crisp directional chevron; a parked one
 // (≈stationary) a small dot. Muted amber + a thin dark edge keeps each one legible on
 // the bright apron without the old additive-glow blob.
-function drawGroundMarker(ctx: CanvasRenderingContext2D, base: number, gs: number, sel: boolean): void {
+function drawGroundMarker(ctx: CanvasRenderingContext2D, base: number, gs: number, sel: boolean, fade = 1, scale = 1): void {
   const fill = sel ? "rgba(255,201,120,0.98)" : "rgba(212,150,86,0.95)";
+  const b = base * scale;
+  ctx.save();
+  if (fade < 1) ctx.globalAlpha = fade;
   ctx.lineJoin = "round";
   if (gs >= 3) {
-    const r = Math.max(4.5, base * 0.42), w = r * 0.7;
+    const r = Math.max(4.5, b * 0.42), w = r * 0.7;
     ctx.beginPath();
     ctx.moveTo(0, -r);
     ctx.lineTo(w, r * 0.72);
@@ -271,7 +339,7 @@ function drawGroundMarker(ctx: CanvasRenderingContext2D, base: number, gs: numbe
     ctx.fillStyle = fill;
     ctx.fill();
   } else {
-    const r = Math.max(2.4, base * 0.22);
+    const r = Math.max(2.4, b * 0.22);
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.strokeStyle = "rgba(0,0,0,0.4)";
@@ -284,9 +352,10 @@ function drawGroundMarker(ctx: CanvasRenderingContext2D, base: number, gs: numbe
     ctx.strokeStyle = "rgba(255,210,120,0.9)";
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.arc(0, 0, (gs >= 3 ? base * 0.42 : base * 0.22) + 5, 0, Math.PI * 2);
+    ctx.arc(0, 0, (gs >= 3 ? b * 0.42 : b * 0.22) + 5, 0, Math.PI * 2);
     ctx.stroke();
   }
+  ctx.restore();
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {

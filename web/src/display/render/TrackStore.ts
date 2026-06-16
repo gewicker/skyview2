@@ -16,6 +16,12 @@ interface Track {
   rLat?: number; // smoothed (low-pass) render position + the render-clock it's valid at
   rLon?: number;
   rT?: number;
+  prevGround?: boolean; // onGround state tracking for takeoff/landing detection
+  groundSince?: number; // when the current onGround state began (debounces threshold flicker)
+  transitAt?: number;   // Date.now of the last real onGround flip
+  transitGround?: boolean; // the NEW state at that flip (true = landed, false = took off)
+  transitLat?: number;
+  transitLon?: number;
 }
 
 const SMOOTH_TAU = 0.22; // s — low-pass time constant; damps the per-fix kink & GPS jitter
@@ -35,6 +41,16 @@ export class TrackStore {
       }
       tr.latest = a;
       tr.lastSeen = now;
+      // Takeoff/landing detection: a real onGround flip after the previous state was held
+      // a while (so threshold flicker on slow/low traffic doesn't trigger a false event).
+      const isGround = !!a.onGround;
+      if (tr.prevGround === undefined) { tr.prevGround = isGround; tr.groundSince = now; }
+      else if (isGround !== tr.prevGround) {
+        if (now - (tr.groundSince ?? now) > 4000) {
+          tr.transitAt = now; tr.transitGround = isGround; tr.transitLat = a.lat; tr.transitLon = a.lon;
+        }
+        tr.prevGround = isGround; tr.groundSince = now;
+      }
       const last = tr.hist[tr.hist.length - 1];
       // Decimate: keep a fix only if it moved a meaningful distance OR enough time
       // passed (so we still record slow turns). Caps unbounded growth on the Pi.
@@ -77,7 +93,17 @@ export class TrackStore {
         if (s.t >= renderT - winMs && s.t <= renderT) trail.push(s);
       }
       trail.push({ t: renderT, lat: pos.lat, lon: pos.lon, alt: tr.latest.altBaro ?? tr.latest.altGeom }); // head
-      out.push({ ...tr.latest, lat: pos.lat, lon: pos.lon, trail });
+      // Surface a recent takeoff/landing as a render-clock age (so the animation plays
+      // when the DELAYED glyph reaches the event, not 1.35 s early).
+      const v: Visible = { ...tr.latest, lat: pos.lat, lon: pos.lon, trail };
+      if (tr.transitAt != null) {
+        const age = renderT - tr.transitAt;
+        if (age >= -200 && age < 2200) {
+          v.transitAge = age; v.transitGround = tr.transitGround;
+          v.transitLat = tr.transitLat; v.transitLon = tr.transitLon;
+        }
+      }
+      out.push(v);
     }
     return out;
   }

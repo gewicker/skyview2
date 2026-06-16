@@ -11,6 +11,13 @@ export interface Visible extends Aircraft {
   lat: number;
   lon: number;
   trail: Sample[];
+  // A recent takeoff/landing (onGround flip), expressed in RENDER-clock age (ms since
+  // the event as the *delayed* render reaches it) so the morph/flourish stay in sync
+  // with the shown position. transitGround: true = just landed, false = just took off.
+  transitAge?: number;
+  transitGround?: boolean;
+  transitLat?: number;
+  transitLon?: number;
 }
 
 // Per-frame context handed to every layer. Carries the single Camera, the config,

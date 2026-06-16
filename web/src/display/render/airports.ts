@@ -22,9 +22,11 @@ export const KSEA: Airport = {
   name: "Sea-Tac",
   elevFt: 433,
   runways: [
-    { leIdent: "16L", heIdent: "34R", le: [47.46384, -122.31121], he: [47.4337, -122.31085], widthFt: 150 },
-    { leIdent: "16C", heIdent: "34C", le: [47.46519, -122.3079], he: [47.43169, -122.30748], widthFt: 150 },
-    { leIdent: "16R", heIdent: "34L", le: [47.46695, -122.30453], he: [47.44313, -122.30425], widthFt: 200 },
+    // Thresholds from FAA/airnav; lengths verified (11,901 / 9,426 / 8,500 ft). 16L is
+    // the EAST runway, 16R the WEST (the prior data had L/R longitudes swapped).
+    { leIdent: "16L", heIdent: "34R", le: [47.463795, -122.307750], he: [47.431172, -122.308038], widthFt: 150 },
+    { leIdent: "16C", heIdent: "34C", le: [47.463810, -122.310984], he: [47.437971, -122.311210], widthFt: 150 },
+    { leIdent: "16R", heIdent: "34L", le: [47.463836, -122.317857], he: [47.440534, -122.318058], widthFt: 150 },
   ],
 };
 export const KBFI: Airport = {
@@ -33,8 +35,9 @@ export const KBFI: Airport = {
   name: "Boeing Field",
   elevFt: 21,
   runways: [
-    { leIdent: "14R", heIdent: "32L", le: [47.54113, -122.30707], he: [47.51234, -122.29897], widthFt: 200 },
-    { leIdent: "14L", heIdent: "32R", le: [47.53283, -122.30307], he: [47.52336, -122.30037], widthFt: 100 },
+    // FAA/airnav thresholds; lengths verified (10,007 / 3,709 ft).
+    { leIdent: "14R", heIdent: "32L", le: [47.540543, -122.311354], he: [47.516737, -122.291228], widthFt: 200 },
+    { leIdent: "14L", heIdent: "32R", le: [47.538018, -122.307460], he: [47.529194, -122.300001], widthFt: 100 },
   ],
 };
 export const KRNT: Airport = {
@@ -42,7 +45,8 @@ export const KRNT: Airport = {
   iata: "RNT",
   name: "Renton",
   elevFt: 32,
-  runways: [{ leIdent: "16", heIdent: "34", le: [47.50293, -122.2167], he: [47.48355, -122.21934], widthFt: 200 }],
+  // FAA/airnav thresholds; length verified (5,382 ft).
+  runways: [{ leIdent: "16", heIdent: "34", le: [47.500474, -122.216853], he: [47.485795, -122.214631], widthFt: 200 }],
 };
 
 export const AIRPORTS: Airport[] = [KSEA, KBFI, KRNT];
