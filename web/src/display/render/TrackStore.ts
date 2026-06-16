@@ -56,7 +56,7 @@ export class TrackStore {
       // Length scales with groundspeed (on top of the time window already making
       // distance ∝ speed): fast traffic streaks, slow/parked traffic gets a stub.
       const gs = tr.latest.gs ?? 0;
-      const winMs = Math.min(110_000, baseMs * clamp(gs / 220, 0.4, 1.3));
+      const winMs = Math.min(70_000, baseMs * clamp(gs / 260, 0.4, 1.05));
       const trail: Sample[] = [];
       for (const s of tr.hist) {
         if (s.t >= renderT - winMs && s.t <= renderT) trail.push(s);

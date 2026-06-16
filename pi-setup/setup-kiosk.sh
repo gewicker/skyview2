@@ -63,12 +63,16 @@ command -v unclutter >/dev/null 2>&1 || { echo "==> installing unclutter-xfixesâ
 
 if command -v labwc >/dev/null 2>&1; then
   mkdir -p "$HOME/.config/labwc"; A="$HOME/.config/labwc/autostart"
-  grep -q skyview-kiosk "$A" 2>/dev/null || echo "$LAUNCH &" >> "$A"
+  # Drop any prior kiosk launcher (incl. v1's skylight-kiosk) so two supervisors don't
+  # boot at once and pkill each other's Chromium â€” that loops the screen black.
+  sed -i '/skylight-kiosk/d;/skyview-kiosk/d' "$A" 2>/dev/null || true
+  echo "$LAUNCH &" >> "$A"
   echo "==> labwc detected; kiosk added to $A"
 elif command -v wayfire >/dev/null 2>&1; then
   INI="$HOME/.config/wayfire.ini"; touch "$INI"
   grep -q "\[autostart\]" "$INI" || printf "\n[autostart]\n" >> "$INI"
-  grep -q skyview-kiosk "$INI" || sed -i "/\[autostart\]/a skyview = $LAUNCH" "$INI"
+  sed -i '/skylight-kiosk/d;/skyview = .*skyview-kiosk/d' "$INI" 2>/dev/null || true
+  sed -i "/\[autostart\]/a skyview = $LAUNCH" "$INI"
   grep -q "screensaver" "$INI" || sed -i "/\[autostart\]/a screensaver = false\ndpms = false" "$INI"
   echo "==> wayfire detected; kiosk added to $INI"
 else

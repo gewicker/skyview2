@@ -4,7 +4,9 @@
 set -uo pipefail
 cmd="${1:-status}"
 
-feed() { curl -fsS http://localhost:8080/data/aircraft.json 2>/dev/null; }
+# The decoder serves at the ROOT (:8080/aircraft.json) in v2; older setups used
+# /data/. Try root first, fall back, so 'decoder' status reports correctly either way.
+feed() { curl -fsS http://localhost:8080/aircraft.json 2>/dev/null || curl -fsS http://localhost:8080/data/aircraft.json 2>/dev/null; }
 
 case "$cmd" in
   status)

@@ -15,7 +15,7 @@ import { HoldingLayer } from "./render/HoldingLayer";
 import { WindsLayer } from "./render/WindsLayer";
 import { AtmosphereLayer } from "./render/AtmosphereLayer";
 import { getPhoto } from "./render/photos";
-import { isLightsOut } from "./render/sun";
+import { isLightsOut, sunAltitude } from "./render/sun";
 import Control from "../control/Control";
 import { loadLocal, saveLocal, clearLocal } from "../lib/localConfig";
 import type { Aircraft, Config } from "@shared/types";
@@ -45,6 +45,7 @@ export default function Display() {
     : null;
   cfgRef.current = effective;
   const localDirty = !isKiosk && Object.keys(localCfg).length > 0;
+  const burnIn = isKiosk && !!effective?.burnInOrbit;
 
   // Apply a config change to the right place: server (kiosk) or local overrides (web).
   const applyConfig = (patch: Partial<Config>) => {
@@ -54,13 +55,21 @@ export default function Display() {
   const pushToDisplay = () => { if (Object.keys(localCfg).length) conn.patchConfig(localCfg); };
   const resetToDisplay = () => { setLocalCfg({}); clearLocal(); };
 
+  // "Mute now": bring the lights-out night view forward; auto-clears at sunrise (the
+  // 24h is just a safety cap — it's only honored while dark). `muteArmed` is the latch;
+  // `muted` is whether it's actually applying right now (so the icon never lies).
+  const muteArmed = (effective?.muteUntil ?? 0) > Date.now();
+  const muted = muteArmed && !!effective &&
+    sunAltitude(effective.centerLat, effective.centerLon, new Date(Date.now() + (effective.skyTimeOffsetMin || 0) * 60000)) < 0;
+  const toggleMute = () => applyConfig({ muteUntil: muteArmed ? 0 : Date.now() + 24 * 3600 * 1000 });
+
   // Auto-hide the on-screen controls after a few seconds of no pointer activity.
   const [uiVisible, setUiVisible] = useState(true);
   const uiTimer = useRef(0);
   const pokeUi = () => {
     setUiVisible(true);
     clearTimeout(uiTimer.current);
-    uiTimer.current = window.setTimeout(() => setUiVisible(false), 3200);
+    uiTimer.current = window.setTimeout(() => setUiVisible(false), 5000);
   };
 
   // Pointer/gesture state.
@@ -102,8 +111,10 @@ export default function Display() {
       .filter((a) => a.lat != null && a.lon != null)
       .map((a) => ({ a, d: (a.lat! - c.centerLat) ** 2 + (a.lon! - c.centerLon) ** 2 }))
       .sort((x, y) => x.d - y.d)
-      .slice(0, 8);
+      .slice(0, 16);
     for (const { a } of near) getPhoto(a.hex, a.registration);
+    // Always warm the tapped/selected aircraft's photo immediately.
+    if (selected) { const s = state.aircraft.find((a) => a.hex === selected); if (s) getPhoto(s.hex, s.registration); }
   }, [state.now]);
 
   // Start the auto-hide timer once on mount; clear it on unmount.
@@ -117,8 +128,11 @@ export default function Display() {
     const tick = () => {
       const c = cfgRef.current;
       if (!c) return;
+      const date = new Date(Date.now() + (c.skyTimeOffsetMin || 0) * 60000);
+      const dark = sunAltitude(c.centerLat, c.centerLon, date) < 0;
       const lo = c.monitorMode === "lightsout" &&
-        isLightsOut(c.centerLat, c.centerLon, c.lightsOutHour ?? 23, new Date(Date.now() + (c.skyTimeOffsetMin || 0) * 60000));
+        (isLightsOut(c.centerLat, c.centerLon, c.lightsOutHour ?? 23, date) ||
+          ((c.muteUntil ?? 0) > Date.now() && dark));
       const on = !lo;
       if (on !== last) { last = on; void fetch(`/api/display/power?on=${on ? 1 : 0}`, { method: "POST" }); }
     };
@@ -131,6 +145,7 @@ export default function Display() {
   useEffect(() => {
     let alive = true;
     const load = async () => {
+      if (!cfgRef.current?.showMetar) return; // opt-in only
       try {
         const r = await fetch("/api/metar");
         const j = await r.json();
@@ -226,10 +241,17 @@ export default function Display() {
 
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
+      {/* Burn-in protection: on the kiosk, drift the whole canvas a few px in a slow
+          150s orbit so static elements never sit on the same pixels. The canvas is
+          oversized so the drift never exposes a black edge. */}
+      <style>{`@keyframes svorbit{0%{transform:translate(0,0)}20%{transform:translate(12px,5px)}40%{transform:translate(6px,12px)}60%{transform:translate(-8px,9px)}80%{transform:translate(-11px,-4px)}100%{transform:translate(0,0)}}`}</style>
       <canvas
         ref={canvasRef}
-        style={{ width: "100%", height: "100%", display: "block", touchAction: "none",
-          cursor: isKiosk ? "none" : "grab" }}
+        style={burnIn
+          ? { position: "absolute", top: -16, left: -16, width: "calc(100% + 32px)", height: "calc(100% + 32px)",
+              display: "block", touchAction: "none", cursor: isKiosk ? "none" : "grab",
+              animation: "svorbit 150s linear infinite" }
+          : { width: "100%", height: "100%", display: "block", touchAction: "none", cursor: isKiosk ? "none" : "grab" }}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
@@ -241,12 +263,12 @@ export default function Display() {
           color: "#6b7686", font: "14px system-ui" }}>Connecting to SkyView…</div>
       )}
 
-      {/* METAR weather ribbon (top-centre). */}
-      {metar?.raw && (
+      {/* METAR weather ribbon (top-centre) — opt-in. */}
+      {effective?.showMetar && metar?.raw && (
         <div style={{ position: "absolute", top: 14, left: "50%", transform: "translateX(-50%)",
           display: "flex", alignItems: "center", gap: 8, padding: "5px 12px", borderRadius: 18,
           background: "rgba(8,12,18,0.62)", border: "0.5px solid rgba(255,255,255,0.12)",
-          backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", maxWidth: "70%" }}>
+          backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", maxWidth: 520 }}>
           {metar.cat && (
             <span style={{ font: "600 11px system-ui", color: "#0a0e14", background: catColor(metar.cat),
               padding: "1px 7px", borderRadius: 9 }}>{metar.cat}</span>
@@ -268,7 +290,11 @@ export default function Display() {
         <CtlBtn label="−" onClick={() => zoom(1 / 1.3)} />
         <CtlBtn label="⌂" onClick={home} title="Recenter on home" />
       </div>
-      <div style={{ position: "absolute", left: 16, bottom: 16, ...autoHide(uiVisible) }}>
+      <div style={{ position: "absolute", left: 16, bottom: 16, display: "flex", flexDirection: "column", gap: 10, ...autoHide(uiVisible) }}>
+        {effective?.monitorMode === "lightsout" && (
+          <CtlBtn label={muted ? "☀" : "🌙"} onClick={toggleMute}
+            title={muted ? "Resume — clear night mute" : "Mute now (night) until sunrise"} />
+        )}
         <CtlBtn label="⚙" onClick={() => setShowSettings(true)} title="Settings" />
       </div>
       {selected && (

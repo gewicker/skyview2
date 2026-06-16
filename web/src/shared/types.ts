@@ -34,12 +34,12 @@ export interface Config {
   rangeRings: boolean; compass: boolean; showAirport: boolean; showApproaches: boolean;
   showFinal: boolean; showTraffic: boolean; showHome: boolean; showHud: boolean;
   showRelative: boolean; highlightEmergency: boolean; showNotable: boolean;
-  notableFlash: boolean; notableWebhook: string; showWinds: boolean; showPhotos: boolean;
+  notableFlash: boolean; notableWebhook: string; showWinds: boolean; showMetar: boolean; showPhotos: boolean;
   showDestArc: boolean; showRouteDetail: boolean; burnInOrbit: boolean;
   showSpotlight: boolean; spotlightRadiusMi: number; spotlightLat: number; spotlightLon: number;
   showStars: boolean; showSun: boolean; showMoon: boolean; showSatellites: boolean;
   starMagLimit: number; skyTimeOffsetMin: number;
-  monitorMode: MonitorMode; lightsOutHour: number; showCursor: boolean;
+  monitorMode: MonitorMode; lightsOutHour: number; muteUntil: number; showCursor: boolean;
 }
 
 export interface Aircraft {

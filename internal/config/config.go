@@ -137,6 +137,7 @@ type Config struct {
 	NotableFlash      bool   `json:"notableFlash"`
 	NotableWebhook    string `json:"notableWebhook"`
 	ShowWinds         bool   `json:"showWinds"`
+	ShowMetar         bool   `json:"showMetar"` // KSEA weather ribbon — off by default
 	ShowPhotos        bool   `json:"showPhotos"`
 	ShowDestArc       bool   `json:"showDestArc"`
 	ShowRouteDetail   bool   `json:"showRouteDetail"`
@@ -159,6 +160,7 @@ type Config struct {
 	// Monitor (touch screen).
 	MonitorMode  MonitorMode `json:"monitorMode"`
 	LightsOutHour int        `json:"lightsOutHour"`
+	MuteUntil    float64     `json:"muteUntil"` // manual "night now" override: epoch ms; honored only while dark, auto-clears at sunrise
 	ShowCursor   bool        `json:"showCursor"`
 }
 
@@ -173,7 +175,7 @@ func Default() Config {
 		Palette: Palette{BG: "#05080d", Glyph: "#ff9a3c", Trail: "#cfd8e3",
 			Accent: "#39c2d8", Warn: "#ff5a4d", Grid: "#1d3a44", Text: "#dfe7f2"},
 		Fonts:       Fonts{Label: "system-ui, sans-serif", Mono: "ui-monospace, monospace"},
-		GlyphSizePx: 22, AltitudeColor: true, TrailMode: "climb", TrailSeconds: 90,
+		GlyphSizePx: 24, AltitudeColor: true, TrailMode: "climb", TrailSeconds: 40,
 		TrailBoost: 0.5, Brightness: 1,
 		LabelDensity: "nearestN", NearestN: 8,
 		ShowFields: ShowFields{Airline: true, Flight: true, Type: true, Altitude: true,

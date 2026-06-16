@@ -56,6 +56,19 @@ export default function Control({ config: c, surface, onChange, onPush, onReset,
             options={[{ value: "satellite", label: "Satellite" }, { value: "wire", label: "Wire" }, { value: "dark", label: "Dark" }]}
             onChange={(v) => set({ mapStyle: v })} />
         </ListRow>
+        <ListRow label="Map up">
+          <span style={{ display: "inline-flex", gap: 6 }}>
+            {([["N", 0], ["E", 270], ["S", 180], ["W", 90]] as const).map(([lbl, deg]) => (
+              <button key={lbl} onClick={() => set({ mapRotationDeg: deg })}
+                style={{ border: 0, borderRadius: 7, padding: "5px 10px", font: "600 13px system-ui", cursor: "pointer",
+                  background: Math.round(c.mapRotationDeg) === deg ? "#0a84ff" : "#e9e9ee",
+                  color: Math.round(c.mapRotationDeg) === deg ? "#fff" : "#1c1c1e" }}>{lbl}</button>
+            ))}
+          </span>
+        </ListRow>
+        <ListRow label={`Rotate ${Math.round(c.mapRotationDeg)}°`}>
+          <Slider value={c.mapRotationDeg} min={0} max={355} step={5} onChange={(v) => set({ mapRotationDeg: v })} />
+        </ListRow>
         <ListRow label="Brightness">
           <Slider value={c.brightness} min={0.1} max={1} step={0.05} onChange={(v) => set({ brightness: v })} />
         </ListRow>
@@ -109,9 +122,10 @@ export default function Control({ config: c, surface, onChange, onPush, onReset,
       <ListSection title="Traffic & alerts">
         <ListRow label="Show traffic" first><Switch value={c.showTraffic} onChange={(v) => set({ showTraffic: v })} /></ListRow>
         <ListRow label="Spotlight"><Switch value={c.showSpotlight} onChange={(v) => set({ showSpotlight: v })} /></ListRow>
-        <ListRow label="Spotlight radius"><Slider value={c.spotlightRadiusMi} min={3} max={40} step={1} onChange={(v) => set({ spotlightRadiusMi: v })} /></ListRow>
+        <ListRow label={`Trigger ring ${Math.round(c.spotlightRadiusMi * 0.8689)} NM`}><Slider value={c.spotlightRadiusMi} min={3} max={40} step={1} onChange={(v) => set({ spotlightRadiusMi: v })} /></ListRow>
         <ListRow label="Leader lines"><Switch value={c.showRelative} onChange={(v) => set({ showRelative: v })} /></ListRow>
         <ListRow label="Winds panel"><Switch value={c.showWinds} onChange={(v) => set({ showWinds: v })} /></ListRow>
+        <ListRow label="Weather (METAR)"><Switch value={c.showMetar} onChange={(v) => set({ showMetar: v })} /></ListRow>
         <ListRow label="Notable"><Switch value={c.showNotable} onChange={(v) => set({ showNotable: v })} /></ListRow>
         <ListRow label="Notable flash"><Switch value={c.notableFlash} onChange={(v) => set({ notableFlash: v })} /></ListRow>
         <ListRow label="Photos"><Switch value={c.showPhotos} onChange={(v) => set({ showPhotos: v })} /></ListRow>
@@ -144,11 +158,12 @@ export default function Control({ config: c, surface, onChange, onPush, onReset,
             <Slider value={c.lightsOutHour} min={17} max={23} step={1} onChange={(v) => set({ lightsOutHour: v })} />
           </ListRow>
         )}
+        <ListRow label="Burn-in shift"><Switch value={c.burnInOrbit} onChange={(v) => set({ burnInOrbit: v })} /></ListRow>
       </ListSection>
       {c.monitorMode === "lightsout" && (
         <div style={{ font: "12px system-ui", color: "#8a8f98", textAlign: "center", margin: "-8px 4px 18px" }}>
-          From bedtime until sunrise the screen dims to a warm amber night view — visible but easy by a bed.
-          A ceiling projector (if configured) powers off instead.
+          Lively all evening, then a dim red night view from bedtime until sunrise — readable by a bed,
+          blue light dropped. Use the 🌙 button to mute early. A ceiling projector (if set) powers off instead.
         </div>
       )}
 

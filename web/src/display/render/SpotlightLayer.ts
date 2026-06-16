@@ -40,6 +40,11 @@ export class SpotlightLayer implements Layer {
     this.updateGolden(f);
     const sLat = f.cfg.spotlightLat ?? f.cfg.centerLat;
     const sLon = f.cfg.spotlightLon ?? f.cfg.centerLon;
+    const radius = f.cfg.spotlightRadiusMi || 15;
+
+    // The trigger ring around home, labelled in NM — the card only appears for an
+    // aircraft inside it, and clears once it leaves.
+    if (f.cfg.showSpotlight) this.drawRing(f, sLat, sLon, radius);
 
     // A manual tap selection wins over the auto-feature (and works even when the
     // auto-spotlight is off), as long as the aircraft is still on screen.
@@ -65,7 +70,6 @@ export class SpotlightLayer implements Layer {
     // During golden hour, auto-feature even if the spotlight is otherwise off — it's
     // the prettiest light to catch an aircraft in.
     if (!f.cfg.showSpotlight && this.golden < 0.15) return;
-    const radius = f.cfg.spotlightRadiusMi || 15;
     const now = f.t * 1000;
 
     // Nearest within radius.
@@ -107,6 +111,33 @@ export class SpotlightLayer implements Layer {
     this.drawPlacard(f, target, sLat, sLon);
   }
 
+  // The configurable trigger ring around the spotlight point (home), labelled in NM.
+  private drawRing(f: FrameContext, sLat: number, sLon: number, radiusMi: number): void {
+    const ctx = f.ctx;
+    const c = f.cam.project(sLat, sLon);
+    const n = f.cam.project(sLat + 1 / 69, sLon); // 1 statute mile north
+    const pxPerMile = Math.hypot(n.x - c.x, n.y - c.y);
+    if (!(pxPerMile > 0)) return;
+    const r = radiusMi * pxPerMile;
+    if (r < 14 || r > Math.hypot(f.w, f.h) * 1.2) return; // skip if too small / way off-screen
+    ctx.save();
+    ctx.strokeStyle = this.ring(0.26);
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([5, 8]);
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const nm = Math.round(radiusMi * 0.8689); // statute mi → nautical mi
+    ctx.font = "600 11px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    const ly = Math.max(16, Math.min(c.y - r - 4, f.h - 8)); // keep the label on-screen
+    ctx.fillStyle = this.ring(0.66);
+    ctx.fillText(`${nm} NM`, Math.max(24, Math.min(c.x, f.w - 24)), ly);
+    ctx.restore();
+  }
+
   private drawPlacard(f: FrameContext, a: Visible, sLat: number, sLon: number): void {
     const ctx = f.ctx;
     const d = distMiles(sLat, sLon, a.lat, a.lon);
@@ -122,25 +153,13 @@ export class SpotlightLayer implements Layer {
     // Vertical rate from the radio.
     const vr = vrateLabel(a);
     if (vr) lines.push(vr);
-    // Autopilot intent (Mode-S nav state): engaged modes + selected altitude/heading/baro.
-    // "AP" prefix labels the row; drop a literal "autopilot" mode so it doesn't double up.
-    const ap: string[] = [];
-    const modes = (a.navModes ?? []).filter((m) => m !== "autopilot");
-    if (modes.length) ap.push(modes.map(modeLabel).join("·"));
-    const tgt = !a.onGround ? a.selAlt ?? a.fmsAlt : undefined;
-    if (tgt != null) ap.push(`⤓ ${Math.round(tgt).toLocaleString()} ft`);
-    if (a.selHeading != null) ap.push(`hdg ${Math.round(a.selHeading)}°`);
-    if (a.navQNH != null) ap.push(`${(a.navQNH / 33.8639).toFixed(2)} inHg`);
-    if (ap.length) lines.push("AP  " + ap.join("  ·  "));
+    // The ambient placard stays glanceable — autopilot intent / QNH / look-angle live
+    // on the tap card (DOM) instead. Keep just identity, altitude, route, distance, CPA.
     // Full route (enrichment): prefer airport names, fall back to ICAO codes.
     const o = a.originName || a.origin;
     const ds = a.destName || a.destination;
     if (o || ds) lines.push(`${o ?? "?"}  →  ${ds ?? "?"}`);
     lines.push(`${d.toFixed(1)} mi ${compass(brg)}`);
-    if (!a.onGround && a.altBaro != null) {
-      const elev = (Math.atan2(a.altBaro * 0.3048, Math.max(1, d * 1609.34)) * 180) / Math.PI;
-      lines.push(`LOOK ${compass(brg)} · ${Math.round(elev)}° UP`);
-    }
     const cpa = closestApproach(a, sLat, sLon);
     if (cpa && cpa.etaSec > 2 && cpa.etaSec < 600 && cpa.minMi < d) {
       lines.push(`closest ~${cpa.minMi.toFixed(1)} mi in ${Math.round(cpa.etaSec)}s`);
@@ -189,7 +208,7 @@ export class SpotlightLayer implements Layer {
     ctx.stroke();
     const ty = y + photoBlock + padY;
     for (let i = 0; i < lines.length; i++) {
-      const cyan = lines[i].startsWith("LOOK") || lines[i].startsWith("closest") || lines[i].startsWith("AP ");
+      const cyan = lines[i].startsWith("closest");
       ctx.fillStyle = i === 0 ? "rgba(238,243,250,0.98)" : cyan ? "rgba(57,194,216,0.95)" : "rgba(196,205,219,0.85)";
       ctx.font = i === 0 || cyan ? "600 12px system-ui, sans-serif" : "12px system-ui, sans-serif";
       ctx.fillText(lines[i], x + padX, ty + i * lh);
@@ -203,19 +222,6 @@ function clamp(v: number, lo: number, hi: number): number {
 }
 function lerpRGB(a: [number, number, number], b: [number, number, number], t: number): [number, number, number] {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
-}
-
-// Short labels for readsb's nav_modes (engaged autopilot modes).
-function modeLabel(m: string): string {
-  switch (m) {
-    case "autopilot": return "AP";
-    case "vnav": return "VNAV";
-    case "lnav": return "LNAV";
-    case "althold": return "ALT";
-    case "approach": return "APPR";
-    case "tcas": return "TCAS";
-    default: return m.toUpperCase();
-  }
 }
 
 // Vertical rate as an arrow + ft/min, rounded to 100 fpm; "level" inside ±100.

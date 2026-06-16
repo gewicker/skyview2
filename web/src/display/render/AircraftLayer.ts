@@ -18,7 +18,9 @@ export class AircraftLayer implements Layer {
 
   draw(f: FrameContext): void {
     const ctx = f.ctx;
-    const base = (f.cfg.glyphSizePx ?? 18) * 0.5;
+    // Airborne aircraft read larger (0.75×) so they stand out on a small panel; ground
+    // traffic is shrunk further below so airports still read as one ball of light.
+    const base = (f.cfg.glyphSizePx ?? 18) * 0.75;
     ctx.save();
     ctx.font = "11px system-ui, sans-serif";
     ctx.textBaseline = "middle";
@@ -75,7 +77,8 @@ export class AircraftLayer implements Layer {
     drawLabels(ctx, jobs, f);
     ctx.restore();
 
-    // Home beacon.
+    // Home beacon (respects the Home toggle).
+    if (!f.cfg.showHome) return;
     const home = f.cam.project(f.cfg.centerLat, f.cfg.centerLon);
     const accent = f.cfg.palette.accent || "#39c2d8";
     const pulse = 0.5 + 0.5 * Math.sin(f.t * 2.2);

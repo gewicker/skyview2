@@ -5,9 +5,11 @@
 //
 // monitorMode acts as an override on top of the automatic curve:
 //   day       — always bright (ignore auto night dim)
-//   night     — auto dim, moderate night floor
-//   lightsout — auto dim, deep night floor (default kiosk)
-//   red       — red night-vision wash + dim
+//   night     — auto dim, moderate night floor (gradual by sun)
+//   lightsout — LIVELY all evening (a conversation piece), then a dim, VISIBLE red
+//               night view (v1-style) from the bedtime hour until sunrise. A manual
+//               "mute now" (cfg.muteUntil) brings it forward; auto-clears at sunrise.
+//   red       — visible red night-vision wash, always on
 // cfg.brightness scales the whole thing. Drawn last, over everything.
 import type { Layer, FrameContext } from "./types";
 import { sunPosition, altAz, isLightsOut } from "./sun";
@@ -37,16 +39,13 @@ export class AtmosphereLayer implements Layer {
     // Multiply by amber to drop the blue light (melatonin/night-vision friendly, like
     // red but calmer), then dim hard so aircraft glow as faint embers over a near-black
     // map. Stays VISIBLE. A ceiling projector (if configured) additionally powers off.
-    if (mode === "lightsout" && this.lightsOut) {
-      ctx.save();
-      ctx.globalCompositeOperation = "multiply";
-      ctx.fillStyle = "rgba(255,96,28,1)";
-      ctx.fillRect(0, 0, w, h);
-      ctx.globalCompositeOperation = "source-over";
-      const d = clamp(0.5 + (1 - clamp(f.cfg.brightness ?? 1, 0, 1)) * 0.42, 0.5, 0.9);
-      ctx.fillStyle = `rgba(8,2,0,${d.toFixed(3)})`;
-      ctx.fillRect(0, 0, w, h);
-      ctx.restore();
+    // Mute now: manual override (button) — forces the night view immediately, but only
+    // while it's actually dark, so it auto-clears at sunrise regardless of the timer.
+    const manualMute = (f.cfg.muteUntil ?? 0) > wall && this.alt < 0;
+    // Visible red night-vision view (v1-style) — stays READABLE by a bed, not black.
+    // Used for the manual "red" mode and for the lights-out night/mute window.
+    if (mode === "red" || (mode === "lightsout" && (this.lightsOut || manualMute))) {
+      redNight(ctx, w, h, f.cfg.brightness ?? 1);
       return;
     }
 
@@ -54,9 +53,11 @@ export class AtmosphereLayer implements Layer {
     // 1 at full day, 0 in deep night; smooth across twilight (+6° → −8°).
     const dayFrac = clamp((this.alt + 8) / 14, 0, 1);
     let dim: number;
-    if (mode === "day") dim = 0;
+    // Lights-out stays fully LIVELY all evening (it mutes via the amber block above at
+    // bedtime, not gradually) — only "night" mode dims gradually by the sun.
+    if (mode === "day" || mode === "lightsout") dim = 0;
     else {
-      const nightFloor = mode === "lightsout" ? 0.82 : mode === "red" ? 0.7 : 0.55;
+      const nightFloor = mode === "red" ? 0.7 : 0.55;
       dim = nightFloor * (1 - dayFrac);
     }
     // Manual brightness trims further (never brightens past auto).
@@ -89,15 +90,22 @@ export class AtmosphereLayer implements Layer {
       ctx.restore();
     }
 
-    // --- red night-vision wash ------------------------------------------- //
-    if (mode === "red") {
-      ctx.save();
-      ctx.globalCompositeOperation = "multiply";
-      ctx.fillStyle = "rgba(255,40,30,0.78)";
-      ctx.fillRect(0, 0, w, h);
-      ctx.restore();
-    }
   }
+}
+
+// Visible red night-vision wash (v1-style): multiply to red (drops blue/green light)
+// then a LIGHT dim so aircraft + the airport glow stay clearly readable by a bed. The
+// brightness slider trims further. Deliberately not near-black.
+function redNight(ctx: CanvasRenderingContext2D, w: number, h: number, brightness: number): void {
+  ctx.save();
+  ctx.globalCompositeOperation = "multiply";
+  ctx.fillStyle = "rgba(255,60,42,1)";
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = "source-over";
+  const d = clamp(0.18 + (1 - clamp(brightness, 0, 1)) * 0.5, 0.12, 0.72);
+  ctx.fillStyle = `rgba(10,0,0,${d.toFixed(3)})`;
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
 }
 
 function clamp(v: number, lo: number, hi: number): number {

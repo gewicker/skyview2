@@ -1,13 +1,14 @@
-// Velocity leader-lines: a thin predictor projected ahead of each airborne target
-// along its track, length = where it'll be in LEAD_SEC at current groundspeed. Makes
-// headings + relative motion read at a glance (who's converging, who's diverging).
-// Drawn under the glyphs. Gated on cfg.showRelative.
+// Heading ticks: a short line off the nose showing the radio-reported ground track.
+// ONLY drawn when the aircraft actually transmits track + groundspeed (no track = no
+// tick), and capped to a small on-screen length so it reads as a heading indicator,
+// not a long predictor. Drawn under the glyphs. Gated on cfg.showRelative.
 import type { Layer, FrameContext } from "./types";
 import { altRamp, hexRGB, type RGB } from "./colors";
 
 const DEG = Math.PI / 180;
 const KT_MS = 0.514444;
-const LEAD_SEC = 60;
+const LEAD_SEC = 18;     // direction sample; length is capped below
+const MAX_LEN_PX = 30;   // cap so even fast jets get a short tick, not a streak
 
 export class LeaderLayer implements Layer {
   readonly name = "leaders";
@@ -19,16 +20,22 @@ export class LeaderLayer implements Layer {
     ctx.save();
     ctx.lineCap = "round";
     for (const a of f.aircraft) {
+      // No radio track (or it's basically stationary) → no heading tick at all.
       if (a.onGround || a.track == null || a.gs == null || a.gs < 30) continue;
       const distM = a.gs * KT_MS * LEAD_SEC;
       const br = a.track * DEG;
       const dLat = (distM * Math.cos(br)) / 110540;
       const dLon = (distM * Math.sin(br)) / (111320 * Math.cos(a.lat * DEG));
       const p0 = f.cam.project(a.lat, a.lon);
-      const p1 = f.cam.project(a.lat + dLat, a.lon + dLon);
+      let p1 = f.cam.project(a.lat + dLat, a.lon + dLon);
+      // Cap the on-screen length (projecting through the camera keeps the direction
+      // correct under map rotation; we just shorten the magnitude).
+      const dx = p1.x - p0.x, dy = p1.y - p0.y;
+      const len = Math.hypot(dx, dy);
+      if (len > MAX_LEN_PX) { const s = MAX_LEN_PX / len; p1 = { x: p0.x + dx * s, y: p0.y + dy * s }; }
       const rgb: RGB = f.cfg.altitudeColor ? altRamp(a.altBaro ?? 0) : flat;
       const grad = ctx.createLinearGradient(p0.x, p0.y, p1.x, p1.y);
-      grad.addColorStop(0, `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},0.5)`);
+      grad.addColorStop(0, `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},0.55)`);
       grad.addColorStop(1, `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},0)`);
       ctx.strokeStyle = grad;
       ctx.lineWidth = 1.4;
@@ -36,11 +43,6 @@ export class LeaderLayer implements Layer {
       ctx.moveTo(p0.x, p0.y);
       ctx.lineTo(p1.x, p1.y);
       ctx.stroke();
-      // A small tick at the 60-second point.
-      ctx.fillStyle = `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},0.4)`;
-      ctx.beginPath();
-      ctx.arc(p1.x, p1.y, 1.6, 0, Math.PI * 2);
-      ctx.fill();
     }
     ctx.restore();
   }
