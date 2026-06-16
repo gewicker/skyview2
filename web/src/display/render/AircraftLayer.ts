@@ -24,16 +24,31 @@ const LOCAL_FIELDS = AIRPORTS.map((ap) => {
   return { iata: ap.iata, lat: la / n, lon: lo / n };
 });
 
-function arrivingLocal(a: Visible): string | null {
-  if (a.onGround || a.altBaro == null || a.altBaro > 5000) return null;
-  if (a.baroRate == null || a.baroRate > -200) return null; // must be clearly descending
+// Nearest local field within `maxMi`, or null. Shared by the arrival/departure tests.
+function nearestLocalField(a: Visible, maxMi: number): string | null {
   let best = Infinity, iata: string | null = null;
   for (const fld of LOCAL_FIELDS) {
     const cos = Math.cos(fld.lat * DEG);
     const d = Math.hypot((a.lat - fld.lat) * 69, (a.lon - fld.lon) * 69 * cos);
     if (d < best) { best = d; iata = fld.iata; }
   }
-  return best <= 7 ? iata : null; // statute miles
+  return best <= maxMi ? iata : null; // statute miles
+}
+
+// Low + clearly descending + close to a local field ⇒ physically landing there.
+function arrivingLocal(a: Visible): string | null {
+  if (a.onGround || a.altBaro == null || a.altBaro > 5000) return null;
+  if (a.baroRate == null || a.baroRate > -200) return null; // must be clearly descending
+  return nearestLocalField(a, 7);
+}
+
+// Low + clearly climbing + close to a local field ⇒ just departed there. Used only to
+// catch the bogus "→ SEA" the route DB shows for a SEA departure (you don't fly to the
+// field you just left); we suppress the destination rather than assert a wrong one.
+function departingLocal(a: Visible): string | null {
+  if (a.onGround || a.altBaro == null || a.altBaro > 10000) return null;
+  if (a.baroRate == null || a.baroRate < 200) return null; // must be clearly climbing
+  return nearestLocalField(a, 6);
 }
 
 export class AircraftLayer implements Layer {
@@ -225,10 +240,12 @@ function labelLines(a: Visible, cfg: Config): string[] {
   if (sf.speed && a.gs != null) parts.push(Math.round(a.gs) + " kt");
   if (parts.length) lines.push(parts.join("  ·  "));
   if (sf.destination) {
-    // Physical reality (landing at a local field) beats the unreliable route DB.
+    // Physical reality beats the unreliable route DB. If it's landing at a local field,
+    // say so. Otherwise show the route destination — unless that destination is the very
+    // field it's departing (a bogus "→ SEA" on a SEA climb-out), in which case suppress.
     const arr = arrivingLocal(a);
     if (arr) lines.push("→ " + arr);
-    else if (a.destination) lines.push("→ " + a.destination);
+    else if (a.destination && a.destination !== departingLocal(a)) lines.push("→ " + a.destination);
   }
   return lines;
 }

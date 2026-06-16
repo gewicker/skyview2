@@ -27,11 +27,18 @@ export class MapLayer implements Layer {
     const fixed = [cfg.mapStyle, cfg.mapRotationDeg, f.w, f.h, f.dpr].join("|");
 
     const forced = !this.renderedView || fixed !== this.renderedFixed;
-    // Re-rasterize at most ~9×/sec while the view differs — so the map crisps up and
-    // pulls new-zoom tiles DURING the gesture, not only after it settles.
     const throttleOk = now - this.builtAt > 110;
     const tilesArrived = tilesVersion() !== this.tilesV && now - this.builtAt > 300;
-    if (forced || (key !== this.renderedKey && throttleOk) || tilesArrived) {
+    // Smooth gestures: while actively panning/zooming we ONLY transform-blit the cached
+    // buffer (one cheap drawImage/frame) and re-rasterize solely when it no longer covers
+    // the screen — re-tiling the oversized buffer mid-gesture is what made pan/zoom stutter
+    // (esp. on 2× web). When the view settles (not interacting) we rasterize once to crisp up.
+    let needRaster = forced;
+    if (!needRaster && key !== this.renderedKey) {
+      needRaster = throttleOk && (f.interacting ? !this.covers(f) : true);
+    }
+    if (!needRaster && tilesArrived && !f.interacting) needRaster = true;
+    if (needRaster) {
       this.rasterize(f);
       this.renderedView = { mapCenterLat: f.view.mapCenterLat, mapCenterLon: f.view.mapCenterLon, mapZoom: f.view.mapZoom };
       this.renderedFixed = fixed;
@@ -67,6 +74,20 @@ export class MapLayer implements Layer {
     }
     this.cinematic(sx, PW, PH, cfg.mapStyle === "satellite");
     this.rings(sx, padCam, cfg);
+  }
+
+  // Does the cached (oversized) buffer, transformed to the live camera, still cover the
+  // whole viewport? If yes we can keep transform-blitting during the gesture; if it has
+  // slid/zoomed past its PAD margin we must re-rasterize to avoid blank edges.
+  private covers(f: FrameContext): boolean {
+    if (!this.renderedView) return false;
+    const rv = this.renderedView;
+    const c = f.cam.project(rv.mapCenterLat, rv.mapCenterLon);
+    const s = f.view.mapZoom / rv.mapZoom;
+    const halfW = (this.canvas.width / f.dpr) * s / 2; // cached buffer half-size in CSS px
+    const halfH = (this.canvas.height / f.dpr) * s / 2;
+    const m = 2; // small slack
+    return c.x - halfW <= m && c.x + halfW >= f.w - m && c.y - halfH <= m && c.y + halfH >= f.h - m;
   }
 
   private straightBlit(f: FrameContext): void {
