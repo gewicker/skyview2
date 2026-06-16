@@ -52,11 +52,11 @@ export default function Display() {
     setLocalCfg((prev) => { const next = { ...prev, ...patch }; saveLocal(next); return next; });
   };
   // Push the FULL effective config (WYSIWYG) so the kiosk becomes an exact replica of
-  // the web view — not just the deltas. Drop device-only fields that shouldn't transfer.
+  // the web view — not just the deltas. muteUntil is forced to 0 so a daytime push never
+  // carries a transient "mute now" to the bedside panel.
   const pushToDisplay = () => {
     if (!effective) return;
-    const { muteUntil: _m, ...full } = effective; // don't push a transient mute to the kiosk
-    conn.patchConfig(full as Partial<Config>);
+    conn.patchConfig({ ...effective, muteUntil: 0 });
   };
   const resetToDisplay = () => { setLocalCfg({}); clearLocal(); };
 
