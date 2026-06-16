@@ -8,10 +8,33 @@ import type { Config } from "@shared/types";
 import { classifyGlyph, GLYPH_SCALE, drawGlyphSpinners, hasSpinners } from "./aircraftGlyph";
 import { getGlyphSprite } from "./glyphCache";
 import { altRamp, hexRGB, type RGB } from "./colors";
+import { AIRPORTS } from "./airports";
 
 const DEG = Math.PI / 180;
 const LINE_H = 14;
 const GROUND_RGB: RGB = [200, 122, 60]; // subdued warm — ground/apron
+
+// Reference point (runway-threshold centroid) + IATA for each local field. ADS-B
+// never transmits destination; the callsign→route DB (adsbdb) gives the scheduled
+// route, which is frequently the wrong leg for an arrival. A low, descending aircraft
+// within a few miles of a local field is physically landing there — we trust that.
+const LOCAL_FIELDS = AIRPORTS.map((ap) => {
+  let la = 0, lo = 0, n = 0;
+  for (const rw of ap.runways) { la += rw.le[0] + rw.he[0]; lo += rw.le[1] + rw.he[1]; n += 2; }
+  return { iata: ap.iata, lat: la / n, lon: lo / n };
+});
+
+function arrivingLocal(a: Visible): string | null {
+  if (a.onGround || a.altBaro == null || a.altBaro > 5000) return null;
+  if (a.baroRate == null || a.baroRate > -200) return null; // must be clearly descending
+  let best = Infinity, iata: string | null = null;
+  for (const fld of LOCAL_FIELDS) {
+    const cos = Math.cos(fld.lat * DEG);
+    const d = Math.hypot((a.lat - fld.lat) * 69, (a.lon - fld.lon) * 69 * cos);
+    if (d < best) { best = d; iata = fld.iata; }
+  }
+  return best <= 7 ? iata : null; // statute miles
+}
 
 export class AircraftLayer implements Layer {
   readonly name = "aircraft";
@@ -194,7 +217,12 @@ function labelLines(a: Visible, cfg: Config): string[] {
   }
   if (sf.speed && a.gs != null) parts.push(Math.round(a.gs) + " kt");
   if (parts.length) lines.push(parts.join("  ·  "));
-  if (sf.destination && a.destination) lines.push("→ " + a.destination);
+  if (sf.destination) {
+    // Physical reality (landing at a local field) beats the unreliable route DB.
+    const arr = arrivingLocal(a);
+    if (arr) lines.push("→ " + arr);
+    else if (a.destination) lines.push("→ " + a.destination);
+  }
   return lines;
 }
 
