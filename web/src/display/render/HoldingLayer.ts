@@ -53,15 +53,29 @@ export class HoldingLayer implements Layer {
 }
 
 function isHolding(trail: Sample[] | undefined): boolean {
-  if (!trail || trail.length < 8) return false;
+  if (!trail || trail.length < 10) return false;
   let minLa = Infinity, maxLa = -Infinity, minLo = Infinity, maxLo = -Infinity;
   for (const s of trail) {
     minLa = Math.min(minLa, s.lat); maxLa = Math.max(maxLa, s.lat);
     minLo = Math.min(minLo, s.lon); maxLo = Math.max(maxLo, s.lon);
   }
   const midLa = (minLa + maxLa) / 2;
-  const spanMi = Math.hypot((maxLa - minLa) * 69, (maxLo - minLo) * 69 * Math.cos(midLa * DEG));
+  const cosLa = Math.cos(midLa * DEG);
+  const spanMi = Math.hypot((maxLa - minLa) * 69, (maxLo - minLo) * 69 * cosLa);
   if (spanMi > 6 || spanMi < 0.3) return false; // too big = transit; too small = parked jitter
+
+  // Net-progress ratio: a hold/orbit loops back on itself, so the straight-line
+  // start→end distance is small next to the path actually flown. Transiting or
+  // landing traffic runs nearly straight (ratio → 1). This is what rejects the
+  // low-speed bearing-jitter false positives on final (e.g. a 737 on short final).
+  let pathMi = 0;
+  for (let i = 1; i < trail.length; i++) {
+    pathMi += Math.hypot((trail[i].lat - trail[i - 1].lat) * 69, (trail[i].lon - trail[i - 1].lon) * 69 * cosLa);
+  }
+  if (pathMi <= 0) return false;
+  const a0 = trail[0], a1 = trail[trail.length - 1];
+  const netMi = Math.hypot((a1.lat - a0.lat) * 69, (a1.lon - a0.lon) * 69 * cosLa);
+  if (netMi / pathMi > 0.45) return false; // running through, not circling
 
   let turn = 0, prev: number | null = null;
   for (let i = 1; i < trail.length; i++) {
@@ -72,7 +86,7 @@ function isHolding(trail: Sample[] | undefined): boolean {
     }
     prev = b;
   }
-  return Math.abs(turn) > 210; // consistent ~⅔-turn+ of circling
+  return Math.abs(turn) > 240; // consistent ~¾-turn+ of circling in one direction
 }
 
 function bearing(a: Sample, b: Sample): number {
