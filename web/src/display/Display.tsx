@@ -5,6 +5,7 @@ import { Renderer } from "./render/Renderer";
 import { MapLayer } from "./render/MapLayer";
 import { AirportsLayer } from "./render/AirportsLayer";
 import { AirportDiagramLayer } from "./render/AirportDiagramLayer";
+import { NightLightsLayer } from "./render/NightLightsLayer";
 import { ApproachLayer } from "./render/ApproachLayer";
 import { ProcedureLayer } from "./render/ProcedureLayer";
 import { NavaidLayer } from "./render/NavaidLayer";
@@ -94,6 +95,7 @@ export default function Display() {
     r.use(new MapLayer());
     r.use(new AirportDiagramLayer()); // taxiways/aprons/buildings (OSM), under the runways
     r.use(new AirportsLayer());
+    r.use(new NightLightsLayer());    // runway/approach lights at night on the active runway
     r.use(new ApproachLayer());
     r.use(new ProcedureLayer()); // final-approach vectors (under traffic), off by default
     r.use(new NavaidLayer());    // VOR roses / fixes (under traffic), off by default

@@ -4,7 +4,7 @@
 import { Camera, llToWorld, worldToLL } from "./mercator";
 import { TrackStore } from "./TrackStore";
 import { pickStatic } from "./navdata";
-import type { Layer } from "./types";
+import type { Layer, Visible } from "./types";
 import type { Aircraft, Config } from "@shared/types";
 
 const MILE_M = 1609.34;
@@ -29,6 +29,7 @@ export class Renderer {
   private override: View | null = null;     // transient view during pan/zoom
   private selectedHex = "";
   private selectedNav = "";                  // tapped navaid/fix/final id
+  private lastVisible: Visible[] = [];       // visible set from the last draw (reused by hit-tests)
   private spotDismissAt = 0;                  // last "dismiss overhead card" tap
   private releaseTimer = 0;
   private lastInteractAt = 0;                // for the uncap + low-detail window
@@ -117,7 +118,7 @@ export class Renderer {
   /** Nearest aircraft to a screen point within a tap threshold, or null. */
   pickAt(px: number, py: number): string | null {
     if (!this.lastCam) return null;
-    const vis = this.store.sample(this.getConfig());
+    const vis = this.lastVisible; // reuse the last frame's set — don't re-run sample() (mutates the smoother)
     let best: string | null = null;
     let bestD = 26 * 26;
     for (const a of vis) {
@@ -147,7 +148,7 @@ export class Renderer {
    *  auto-despawn the tap card when a contact leaves range or is panned off-screen. */
   onScreen(hex: string): boolean {
     if (!this.lastCam) return true;
-    const a = this.store.sample(this.getConfig()).find((x) => x.hex === hex);
+    const a = this.lastVisible.find((x) => x.hex === hex);
     if (!a) return false; // gone from the feed (out of range)
     const p = this.lastCam.project(a.lat, a.lon);
     const m = 40;
@@ -184,6 +185,7 @@ export class Renderer {
     this.lastCam = cam;
 
     const visible = this.store.sample(cfg);
+    this.lastVisible = visible; // hit-tests (pickAt/onScreen) reuse this instead of re-sampling
     const f = {
       ctx, cam, cfg, t: now / 1000, dt, w: this.w, h: this.h, dpr: this.dpr,
       aircraft: visible, view: v, selectedHex: this.selectedHex || undefined,

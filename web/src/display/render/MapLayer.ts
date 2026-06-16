@@ -45,6 +45,11 @@ export class MapLayer implements Layer {
       needRaster = throttleOk && (f.interacting ? !this.covers(f) : true);
     }
     if (!needRaster && tilesArrived && !f.interacting) needRaster = true;
+    // Don't start a non-forced re-raster while a settle dissolve is still running — it would
+    // overwrite the ping-pong buffer/prevView the fade is reading and flash. (Gestures set
+    // fadeStart=0, so this only guards the at-rest tile top-ups.)
+    const fadeActive = this.fadeStart > 0 && now - this.fadeStart < FADE_MS && !f.interacting;
+    if (fadeActive) needRaster = forced;
     if (needRaster) {
       const hadPrev = !!this.renderedView;
       this.prevView = this.renderedView; // preserve old view for the cross-fade

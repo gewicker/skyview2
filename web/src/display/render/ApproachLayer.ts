@@ -16,17 +16,27 @@ interface End {
   tLon: number;
   course: number; // landing heading, deg
   elevFt: number; // field elevation MSL (threshold) — for the glidepath fit
+  cosLat: number; // cos(tLat) — precomputed (constant per end)
+  ux: number; // sin(course)  ┐ landing-direction unit vector (E,N)
+  uy: number; // cos(course)  ┘
 }
 
-// Precompute both landing directions for every runway once.
+// Precompute both landing directions for every runway once, with the trig hoisted out of
+// the per-aircraft/per-frame hot path in match().
 const ENDS: End[] = (() => {
   const out: End[] = [];
+  const mk = (ap: typeof AIRPORTS[number], ident: string, thr: readonly [number, number], course: number): End => {
+    const cb = course * DEG;
+    return {
+      icao: ap.icao, iata: ap.iata, ident, tLat: thr[0], tLon: thr[1], course, elevFt: ap.elevFt,
+      cosLat: Math.cos(thr[0] * DEG), ux: Math.sin(cb), uy: Math.cos(cb),
+    };
+  };
   for (const ap of AIRPORTS) {
     for (const rw of ap.runways) {
       const a = bearing(rw.le[0], rw.le[1], rw.he[0], rw.he[1]); // le→he
-      const b = (a + 180) % 360;
-      out.push({ icao: ap.icao, iata: ap.iata, ident: rw.leIdent, tLat: rw.le[0], tLon: rw.le[1], course: a, elevFt: ap.elevFt });
-      out.push({ icao: ap.icao, iata: ap.iata, ident: rw.heIdent, tLat: rw.he[0], tLon: rw.he[1], course: b, elevFt: ap.elevFt });
+      out.push(mk(ap, rw.leIdent, rw.le, a));
+      out.push(mk(ap, rw.heIdent, rw.he, (a + 180) % 360));
     }
   }
   return out;
@@ -100,10 +110,9 @@ function match(a: Visible): Match | null {
   const destLocal = a.destination && LOCAL_IATA.has(a.destination) ? a.destination : null;
   for (const e of ENDS) {
     // Local east/north metres from the threshold.
-    const east = (a.lon - e.tLon) * Math.cos(e.tLat * DEG) * 111320;
+    const east = (a.lon - e.tLon) * e.cosLat * 111320;
     const north = (a.lat - e.tLat) * 110540;
-    const cb = e.course * DEG;
-    const ux = Math.sin(cb), uy = Math.cos(cb); // landing direction (E,N)
+    const ux = e.ux, uy = e.uy; // landing direction (E,N), precomputed
     const along = east * ux + north * uy; // +ve past threshold; approach side is −ve
     const dist = -along; // metres before the threshold
     if (dist < 300 || dist > 12 * MI) continue;

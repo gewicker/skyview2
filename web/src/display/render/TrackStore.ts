@@ -92,10 +92,17 @@ export class TrackStore {
       // distance ∝ speed): fast traffic streaks, slow/parked traffic gets a stub.
       const gs = tr.latest.gs ?? 0;
       const winMs = Math.min(70_000, baseMs * clamp(gs / 260, 0.4, 1.05));
+      const lo = renderT - winMs;
+      // hist is time-sorted: walk back from the newest fix and stop once past the window,
+      // so we touch only the visible tail instead of scanning the full (≤700) history.
       const trail: Sample[] = [];
-      for (const s of tr.hist) {
-        if (s.t >= renderT - winMs && s.t <= renderT) trail.push(s);
+      for (let i = tr.hist.length - 1; i >= 0; i--) {
+        const s = tr.hist[i];
+        if (s.t > renderT) continue; // not yet reached at render time
+        if (s.t < lo) break;         // older than the window — everything before is too
+        trail.push(s);
       }
+      trail.reverse();
       trail.push({ t: renderT, lat: pos.lat, lon: pos.lon, alt: tr.latest.altBaro ?? tr.latest.altGeom }); // head
       // Surface a recent takeoff/landing as a render-clock age (so the animation plays
       // when the DELAYED glyph reaches the event, not 1.35 s early).
