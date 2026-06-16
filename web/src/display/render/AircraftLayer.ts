@@ -10,7 +10,7 @@ import { getGlyphSprite } from "./glyphCache";
 import { altRamp, hexRGB, type RGB } from "./colors";
 
 const DEG = Math.PI / 180;
-const LINE_H = 13;
+const LINE_H = 14;
 const GROUND_RGB: RGB = [200, 122, 60]; // subdued warm — ground/apron
 
 export class AircraftLayer implements Layer {
@@ -22,7 +22,7 @@ export class AircraftLayer implements Layer {
     // traffic is shrunk further below so airports still read as one ball of light.
     const base = (f.cfg.glyphSizePx ?? 18) * 0.75;
     ctx.save();
-    ctx.font = "11px system-ui, sans-serif";
+    ctx.font = "600 12px system-ui, sans-serif";
     ctx.textBaseline = "middle";
 
     const jobs: LabelJob[] = [];
@@ -157,12 +157,19 @@ function drawLabels(ctx: CanvasRenderingContext2D, jobs: LabelJob[], f: FrameCon
 function drawLabel(ctx: CanvasRenderingContext2D, lines: string[], x: number, cy: number, maxW: number): void {
   const n = lines.length;
   const top = cy - ((n - 1) * LINE_H) / 2;
-  ctx.fillStyle = "rgba(6,10,16,0.5)";
-  roundRect(ctx, x - 4, top - LINE_H / 2 - 1, maxW + 8, n * LINE_H + 2, 4);
+  // Darker, more opaque plate for contrast over busy satellite imagery.
+  ctx.fillStyle = "rgba(8,12,18,0.7)";
+  roundRect(ctx, x - 5, top - LINE_H / 2 - 2, maxW + 10, n * LINE_H + 4, 5);
   ctx.fill();
+  ctx.lineJoin = "round";
   for (let i = 0; i < n; i++) {
-    ctx.fillStyle = i === 0 ? "rgba(236,241,248,0.96)" : "rgba(190,200,214,0.82)";
-    ctx.fillText(lines[i], x, top + i * LINE_H);
+    const y = top + i * LINE_H;
+    // Cheap dark outline (no shadowBlur — too slow on the Pi) so text stays crisp.
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(0,0,0,0.6)";
+    ctx.strokeText(lines[i], x, y);
+    ctx.fillStyle = i === 0 ? "rgba(242,246,251,0.99)" : "rgba(208,217,228,0.93)";
+    ctx.fillText(lines[i], x, y);
   }
 }
 
