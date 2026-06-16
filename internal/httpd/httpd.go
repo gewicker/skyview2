@@ -108,7 +108,6 @@ func New(d Deps) http.Handler {
 	})
 
 	mux.HandleFunc("/api/photo/", photoHandler)
-	mux.HandleFunc("/api/metar", metarHandler)
 
 	// Relaunch the kiosk (Pi); best-effort, no-op elsewhere.
 	mux.HandleFunc("POST /api/kiosk/restart", func(w http.ResponseWriter, r *http.Request) {

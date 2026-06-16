@@ -27,7 +27,6 @@ export default function Display() {
   const cfgRef = useRef<Config | null>(null);
 
   const [selected, setSelected] = useState<string | null>(null);
-  const [metar, setMetar] = useState<{ raw: string; cat: string } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
 
   // On the Pi kiosk we launch with ?kiosk=1: hide the cursor entirely. On the web
@@ -52,7 +51,13 @@ export default function Display() {
     if (isKiosk) { conn.patchConfig(patch); return; }
     setLocalCfg((prev) => { const next = { ...prev, ...patch }; saveLocal(next); return next; });
   };
-  const pushToDisplay = () => { if (Object.keys(localCfg).length) conn.patchConfig(localCfg); };
+  // Push the FULL effective config (WYSIWYG) so the kiosk becomes an exact replica of
+  // the web view — not just the deltas. Drop device-only fields that shouldn't transfer.
+  const pushToDisplay = () => {
+    if (!effective) return;
+    const { muteUntil: _m, ...full } = effective; // don't push a transient mute to the kiosk
+    conn.patchConfig(full as Partial<Config>);
+  };
   const resetToDisplay = () => { setLocalCfg({}); clearLocal(); };
 
   // "Mute now": bring the lights-out night view forward; auto-clears at sunrise (the
@@ -140,23 +145,6 @@ export default function Display() {
     const id = window.setInterval(tick, 30000);
     return () => clearInterval(id);
   }, [isProjector]);
-
-  // Poll the server's KSEA METAR proxy every 5 min for the weather ribbon.
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      if (!cfgRef.current?.showMetar) return; // opt-in only
-      try {
-        const r = await fetch("/api/metar");
-        const j = await r.json();
-        const m = Array.isArray(j) ? j[0] : null;
-        if (alive && m && m.rawOb) setMetar({ raw: m.rawOb as string, cat: (m.fltcat as string) || "" });
-      } catch { /* offline / transient — keep the last value */ }
-    };
-    load();
-    const id = window.setInterval(load, 300000);
-    return () => { alive = false; clearInterval(id); };
-  }, []);
 
   const rel = (e: RPointerEvent | RWheelEvent) => {
     const rc = canvasRef.current!.getBoundingClientRect();
@@ -261,21 +249,6 @@ export default function Display() {
       {!state.config && (
         <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center",
           color: "#6b7686", font: "14px system-ui" }}>Connecting to SkyView…</div>
-      )}
-
-      {/* METAR weather ribbon (top-centre) — opt-in. */}
-      {effective?.showMetar && metar?.raw && (
-        <div style={{ position: "absolute", top: 14, left: "50%", transform: "translateX(-50%)",
-          display: "flex", alignItems: "center", gap: 8, padding: "5px 12px", borderRadius: 18,
-          background: "rgba(8,12,18,0.62)", border: "0.5px solid rgba(255,255,255,0.12)",
-          backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", maxWidth: 520 }}>
-          {metar.cat && (
-            <span style={{ font: "600 11px system-ui", color: "#0a0e14", background: catColor(metar.cat),
-              padding: "1px 7px", borderRadius: 9 }}>{metar.cat}</span>
-          )}
-          <span style={{ font: "12px ui-monospace, monospace", color: "rgba(214,224,236,0.9)",
-            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{metar.raw}</span>
-        </div>
       )}
 
       {/* Rich tap card for a selected aircraft (top-right). */}
@@ -449,17 +422,6 @@ function bearing(la1: number, lo1: number, la2: number, lo2: number): number {
 }
 function compass(deg: number): string {
   return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(deg / 45) % 8];
-}
-
-// Standard aviation flight-category colours for the METAR chip.
-function catColor(cat: string): string {
-  switch (cat) {
-    case "VFR": return "#56d364";
-    case "MVFR": return "#58a6ff";
-    case "IFR": return "#ff5a4d";
-    case "LIFR": return "#d36bff";
-    default: return "#9aa4b2";
-  }
 }
 
 // Fade controls in/out and disable hit-testing when hidden so they don't block taps.

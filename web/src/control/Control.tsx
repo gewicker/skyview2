@@ -125,7 +125,6 @@ export default function Control({ config: c, surface, onChange, onPush, onReset,
         <ListRow label={`Trigger ring ${Math.round(c.spotlightRadiusMi * 0.8689)} NM`}><Slider value={c.spotlightRadiusMi} min={3} max={40} step={1} onChange={(v) => set({ spotlightRadiusMi: v })} /></ListRow>
         <ListRow label="Leader lines"><Switch value={c.showRelative} onChange={(v) => set({ showRelative: v })} /></ListRow>
         <ListRow label="Winds panel"><Switch value={c.showWinds} onChange={(v) => set({ showWinds: v })} /></ListRow>
-        <ListRow label="Weather (METAR)"><Switch value={c.showMetar} onChange={(v) => set({ showMetar: v })} /></ListRow>
         <ListRow label="Notable"><Switch value={c.showNotable} onChange={(v) => set({ showNotable: v })} /></ListRow>
         <ListRow label="Notable flash"><Switch value={c.notableFlash} onChange={(v) => set({ notableFlash: v })} /></ListRow>
         <ListRow label="Photos"><Switch value={c.showPhotos} onChange={(v) => set({ showPhotos: v })} /></ListRow>

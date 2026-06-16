@@ -153,12 +153,9 @@ export class SpotlightLayer implements Layer {
     // Vertical rate from the radio.
     const vr = vrateLabel(a);
     if (vr) lines.push(vr);
-    // The ambient placard stays glanceable — autopilot intent / QNH / look-angle live
-    // on the tap card (DOM) instead. Keep just identity, altitude, route, distance, CPA.
-    // Full route (enrichment): prefer airport names, fall back to ICAO codes.
-    const o = a.originName || a.origin;
-    const ds = a.destName || a.destination;
-    if (o || ds) lines.push(`${o ?? "?"}  →  ${ds ?? "?"}`);
+    // The ambient placard stays glanceable — autopilot intent / QNH / look-angle AND
+    // the (adsbdb, crowd-sourced, unreliable) origin→destination route live on the tap
+    // card instead. Keep just identity, altitude, distance, CPA here.
     lines.push(`${d.toFixed(1)} mi ${compass(brg)}`);
     const cpa = closestApproach(a, sLat, sLon);
     if (cpa && cpa.etaSec > 2 && cpa.etaSec < 600 && cpa.minMi < d) {

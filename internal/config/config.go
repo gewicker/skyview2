@@ -137,7 +137,6 @@ type Config struct {
 	NotableFlash      bool   `json:"notableFlash"`
 	NotableWebhook    string `json:"notableWebhook"`
 	ShowWinds         bool   `json:"showWinds"`
-	ShowMetar         bool   `json:"showMetar"` // KSEA weather ribbon — off by default
 	ShowPhotos        bool   `json:"showPhotos"`
 	ShowDestArc       bool   `json:"showDestArc"`
 	ShowRouteDetail   bool   `json:"showRouteDetail"`
