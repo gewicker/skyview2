@@ -77,14 +77,15 @@ export class AircraftLayer implements Layer {
     drawLabels(ctx, jobs, f);
     ctx.restore();
 
-    // Home beacon (respects the Home toggle).
+    // Home beacon (respects the Home toggle). Gold so it stands out from the cyan UI
+    // accents and the altitude-coloured traffic.
     if (!f.cfg.showHome) return;
     const home = f.cam.project(f.cfg.centerLat, f.cfg.centerLon);
-    const accent = f.cfg.palette.accent || "#39c2d8";
+    const accent = "#ffc83c";
     const pulse = 0.5 + 0.5 * Math.sin(f.t * 2.2);
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
-    ctx.fillStyle = "rgba(57,194,216,0.18)";
+    ctx.fillStyle = "rgba(255,200,70,0.22)";
     ctx.beginPath();
     ctx.arc(home.x, home.y, 13 + 3 * pulse, 0, Math.PI * 2);
     ctx.fill();
