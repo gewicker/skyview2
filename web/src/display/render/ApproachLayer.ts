@@ -57,15 +57,19 @@ export class ApproachLayer implements Layer {
       ctx.closePath();
       ctx.stroke();
 
-      // Runway tag.
+      // Runway tag — centered BELOW the glyph. The identity label sits to the
+      // right at the glyph's vertical center, so anchoring here keeps the two from
+      // overlapping (the old p.y anchor buried the callsign under "… mi").
       const tag = `${m.ident} ${m.icao.replace(/^K/, "")} · ${m.miles.toFixed(1)} mi`;
       ctx.font = "600 11px system-ui, sans-serif";
+      ctx.textAlign = "center";
       const tw = ctx.measureText(tag).width;
-      ctx.fillStyle = "rgba(8,20,28,0.66)";
-      roundRect(ctx, p.x + r + 3, p.y - 9, tw + 8, 18, 4);
+      const ty = p.y + r + 12;
+      ctx.fillStyle = "rgba(8,20,28,0.72)";
+      roundRect(ctx, p.x - tw / 2 - 5, ty - 9, tw + 10, 18, 4);
       ctx.fill();
       ctx.fillStyle = "rgba(170,235,255,0.95)";
-      ctx.fillText(tag, p.x + r + 7, p.y);
+      ctx.fillText(tag, p.x, ty);
     }
     ctx.restore();
   }
