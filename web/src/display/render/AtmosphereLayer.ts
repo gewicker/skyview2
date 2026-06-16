@@ -22,6 +22,11 @@ export class AtmosphereLayer implements Layer {
   private lightsOut = false;
 
   draw(f: FrameContext): void {
+    // Exception: when an aircraft is tapped, suspend ALL dimming/red so the contact and
+    // its card show in full colour — even during the bedtime/red night. Returns to the
+    // night look automatically once it's deselected (or despawns off-screen).
+    if (f.selectedHex) return;
+
     // Recompute the sun every ~20 s (it moves ~0.08°/min).
     const wall = Date.now();
     if (wall - this.at > 20000) {

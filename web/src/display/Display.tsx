@@ -107,6 +107,13 @@ export default function Display() {
 
   useEffect(() => { rendererRef.current?.update(state.aircraft); }, [state.now, state.aircraft]);
 
+  // Despawn the tap card when the selected contact leaves range or is panned off-screen.
+  useEffect(() => {
+    if (!selected) return;
+    const r = rendererRef.current;
+    if (r && !r.onScreen(selected)) { r.select(null); setSelected(null); }
+  }, [state.now, selected]);
+
   // Pre-fetch photos for the nearest aircraft each frame so the spotlight card is
   // instant when one auto-features or the user taps it. getPhoto caches + dedupes.
   useEffect(() => {

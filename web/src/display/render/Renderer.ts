@@ -128,6 +128,17 @@ export class Renderer {
   select(hex: string | null): void { this.selectedHex = hex || ""; }
   getView(): View { return this.view(); }
 
+  /** Is this aircraft still tracked AND within (a margin of) the viewport? Used to
+   *  auto-despawn the tap card when a contact leaves range or is panned off-screen. */
+  onScreen(hex: string): boolean {
+    if (!this.lastCam) return true;
+    const a = this.store.sample(this.getConfig()).find((x) => x.hex === hex);
+    if (!a) return false; // gone from the feed (out of range)
+    const p = this.lastCam.project(a.lat, a.lon);
+    const m = 40;
+    return p.x >= -m && p.x <= this.w + m && p.y >= -m && p.y <= this.h + m;
+  }
+
   /** Drop the transient override shortly after a commit, so config takes over. */
   scheduleRelease(ms = 700): void {
     clearTimeout(this.releaseTimer);
