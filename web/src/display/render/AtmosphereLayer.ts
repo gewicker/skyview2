@@ -96,12 +96,14 @@ export class AtmosphereLayer implements Layer {
 // brightness slider trims further. Deliberately not near-black.
 function redNight(ctx: CanvasRenderingContext2D, w: number, h: number, brightness: number): void {
   ctx.save();
+  // Multiply to red but keep more luminance so it stays vibrant/readable, then only a
+  // light dim at full brightness. The brightness slider takes it down toward sleep.
   ctx.globalCompositeOperation = "multiply";
-  ctx.fillStyle = "rgba(255,60,42,1)";
+  ctx.fillStyle = "rgba(255,90,64,1)";
   ctx.fillRect(0, 0, w, h);
   ctx.globalCompositeOperation = "source-over";
-  const d = clamp(0.18 + (1 - clamp(brightness, 0, 1)) * 0.5, 0.12, 0.72);
-  ctx.fillStyle = `rgba(10,0,0,${d.toFixed(3)})`;
+  const d = clamp(0.05 + (1 - clamp(brightness, 0, 1)) * 0.62, 0.03, 0.75);
+  ctx.fillStyle = `rgba(12,0,0,${d.toFixed(3)})`;
   ctx.fillRect(0, 0, w, h);
   ctx.restore();
 }

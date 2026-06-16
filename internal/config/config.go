@@ -169,7 +169,7 @@ func Default() Config {
 	return Config{
 		CenterLat: 47.617, CenterLon: -122.1936, RadiusMiles: 22,
 		Zoom: 2.5,
-		MapZoom: 1, MapCenterLat: 47.585, MapCenterLon: -122.255, MapRotationDeg: 0,
+		MapZoom: 1, MapCenterLat: 47.585, MapCenterLon: -122.255, MapRotationDeg: 270, // East up (faces 405)
 		MaxExtrapolationSec: 8, StaleSec: 30, MaxFps: 24, RenderScale: 1, Interpolate: true,
 		Skin: SkinMap, MapStyle: StyleSatellite, GridOverlay: "off",
 		Palette: Palette{BG: "#05080d", Glyph: "#ff9a3c", Trail: "#cfd8e3",
