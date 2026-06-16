@@ -20,6 +20,8 @@ export class AtmosphereLayer implements Layer {
   private alt = 45; // cached sun altitude, deg
   private az = 180; // cached sun azimuth, deg
   private lightsOut = false;
+  private grad: CanvasGradient | null = null; // cached golden-hour gradient
+  private gradKey = "";
 
   draw(f: FrameContext): void {
     // Exception: when an aircraft is tapped, suspend ALL dimming/red so the contact and
@@ -70,15 +72,22 @@ export class AtmosphereLayer implements Layer {
     // Strongest as the sun crosses the horizon; fades out by ~8° up / ~6° down.
     const golden = this.alt < 8 && this.alt > -6 ? clamp(1 - Math.abs(this.alt) / 7, 0, 1) : 0;
     if (golden > 0) {
-      ctx.save();
-      ctx.globalCompositeOperation = "soft-light";
       // Bias the warmth toward the horizon where the sun sits (E at dawn, W at dusk).
       const fromEast = this.az < 180;
-      const g = ctx.createLinearGradient(fromEast ? 0 : w, 0, fromEast ? w : 0, h);
-      g.addColorStop(0, `rgba(255,150,60,${(0.5 * golden).toFixed(3)})`);
-      g.addColorStop(0.6, `rgba(255,120,80,${(0.22 * golden).toFixed(3)})`);
-      g.addColorStop(1, "rgba(120,90,140,0)");
-      ctx.fillStyle = g;
+      // Cache the gradient — golden only changes every ~20 s, so rebuilding it per frame
+      // (createLinearGradient + 3 stops on the top full-screen layer) was pure waste.
+      const key = `${w}|${h}|${fromEast}|${golden.toFixed(2)}`;
+      if (key !== this.gradKey || !this.grad) {
+        const g = ctx.createLinearGradient(fromEast ? 0 : w, 0, fromEast ? w : 0, h);
+        g.addColorStop(0, `rgba(255,150,60,${(0.5 * golden).toFixed(3)})`);
+        g.addColorStop(0.6, `rgba(255,120,80,${(0.22 * golden).toFixed(3)})`);
+        g.addColorStop(1, "rgba(120,90,140,0)");
+        this.grad = g;
+        this.gradKey = key;
+      }
+      ctx.save();
+      ctx.globalCompositeOperation = "soft-light";
+      ctx.fillStyle = this.grad;
       ctx.fillRect(0, 0, w, h);
       ctx.restore();
     }

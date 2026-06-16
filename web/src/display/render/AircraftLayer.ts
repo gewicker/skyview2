@@ -16,6 +16,19 @@ const GROUND_RGB: RGB = [200, 122, 60]; // subdued warm — ground/apron
 const MORPH_MS = 700;    // glyph crossfade between ground chevron and airborne silhouette
 const FLOURISH_MS = 1300; // one-time touchdown ripple / liftoff glow
 
+// Label widths were measured for every line of every aircraft every frame; the strings only
+// change ~1 Hz (and labels use one fixed font here), so cache them.
+const _labelW = new Map<string, number>();
+function measureLabel(ctx: CanvasRenderingContext2D, s: string): number {
+  let w = _labelW.get(s);
+  if (w === undefined) {
+    w = ctx.measureText(s).width;
+    if (_labelW.size > 1000) _labelW.clear();
+    _labelW.set(s, w);
+  }
+  return w;
+}
+
 // Reference point (runway-threshold centroid) + IATA for each local field. ADS-B
 // never transmits destination; the callsign→route DB (adsbdb) gives the scheduled
 // route, which is frequently the wrong leg for an arrival. A low, descending aircraft
@@ -111,7 +124,7 @@ export class AircraftLayer implements Layer {
         const lines = labelLines(a, f.cfg);
         if (lines.length) {
           let w = 0;
-          for (const l of lines) w = Math.max(w, ctx.measureText(l).width);
+          for (const l of lines) w = Math.max(w, measureLabel(ctx, l));
           const dist = (a.lat - f.cfg.centerLat) ** 2 + (a.lon - f.cfg.centerLon) ** 2;
           jobs.push({
             hex: a.hex, lines, ax: p.x + glyphS + 8, ay: p.y, drawY: p.y,
