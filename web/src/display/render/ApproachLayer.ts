@@ -10,6 +10,7 @@ const MI = 1609.34;
 
 interface End {
   icao: string;
+  iata: string; // owning airport's IATA, matched against the aircraft's destination
   ident: string; // runway you'd be landing on
   tLat: number; // touchdown threshold
   tLon: number;
@@ -23,12 +24,14 @@ const ENDS: End[] = (() => {
     for (const rw of ap.runways) {
       const a = bearing(rw.le[0], rw.le[1], rw.he[0], rw.he[1]); // le→he
       const b = (a + 180) % 360;
-      out.push({ icao: ap.icao, ident: rw.leIdent, tLat: rw.le[0], tLon: rw.le[1], course: a });
-      out.push({ icao: ap.icao, ident: rw.heIdent, tLat: rw.he[0], tLon: rw.he[1], course: b });
+      out.push({ icao: ap.icao, iata: ap.iata, ident: rw.leIdent, tLat: rw.le[0], tLon: rw.le[1], course: a });
+      out.push({ icao: ap.icao, iata: ap.iata, ident: rw.heIdent, tLat: rw.he[0], tLon: rw.he[1], course: b });
     }
   }
   return out;
 })();
+
+const LOCAL_IATA = new Set(AIRPORTS.map((ap) => ap.iata));
 
 export class ApproachLayer implements Layer {
   readonly name = "approach";
@@ -42,6 +45,10 @@ export class ApproachLayer implements Layer {
     for (const a of f.aircraft) {
       if (a.onGround) continue;
       if (a.altBaro != null && a.altBaro > 6000) continue; // only low, inbound traffic
+      // If we know the destination, trust it: a plane routed to SEA can only be on
+      // final to SEA — never tag it for BFI/RNT just because it overflies their
+      // extended centerline. A destination we don't track means it's transiting.
+      if (a.destination && !LOCAL_IATA.has(a.destination)) continue;
       const m = match(a);
       if (!m) continue;
       const p = f.cam.project(a.lat, a.lon);
@@ -79,7 +86,11 @@ interface Match { icao: string; ident: string; miles: number }
 
 function match(a: Visible): Match | null {
   let best: Match | null = null;
-  for (const e of ENDS) {
+  // When the destination is known and local, only consider that airport's runways.
+  const ends = a.destination && LOCAL_IATA.has(a.destination)
+    ? ENDS.filter((e) => e.iata === a.destination)
+    : ENDS;
+  for (const e of ends) {
     // Local east/north metres from the threshold.
     const east = (a.lon - e.tLon) * Math.cos(e.tLat * DEG) * 111320;
     const north = (a.lat - e.tLat) * 110540;

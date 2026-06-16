@@ -10,12 +10,14 @@ export interface Runway {
 }
 export interface Airport {
   icao: string;
+  iata: string; // ADS-B route destinations arrive as IATA codes (SEA, BFI, RNT)
   name: string;
   runways: Runway[];
 }
 
 export const KSEA: Airport = {
   icao: "KSEA",
+  iata: "SEA",
   name: "Sea-Tac",
   runways: [
     { leIdent: "16L", heIdent: "34R", le: [47.46384, -122.31121], he: [47.4337, -122.31085], widthFt: 150 },
@@ -25,6 +27,7 @@ export const KSEA: Airport = {
 };
 export const KBFI: Airport = {
   icao: "KBFI",
+  iata: "BFI",
   name: "Boeing Field",
   runways: [
     { leIdent: "14R", heIdent: "32L", le: [47.54113, -122.30707], he: [47.51234, -122.29897], widthFt: 200 },
@@ -33,6 +36,7 @@ export const KBFI: Airport = {
 };
 export const KRNT: Airport = {
   icao: "KRNT",
+  iata: "RNT",
   name: "Renton",
   runways: [{ leIdent: "16", heIdent: "34", le: [47.50293, -122.2167], he: [47.48355, -122.21934], widthFt: 200 }],
 };
