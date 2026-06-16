@@ -111,9 +111,28 @@ export class AircraftLayer implements Layer {
       } else {
         if (morphing && a.transitGround === false) {
           drawGroundMarker(ctx, base, a.gs ?? 0, a.hex === f.selectedHex, 1 - tp, 1);
-          this.airborne(f, kind, rgb, glyphS, glowS, tp, seedFor(a.hex), 0.6 + 0.4 * tp);
+          // Rotation/lift-off pop: grow in with a mid-morph scale overshoot.
+          this.airborne(f, kind, rgb, glyphS, glowS, tp, seedFor(a.hex), 0.6 + 0.4 * tp + 0.2 * Math.sin(tp * Math.PI));
         } else {
           this.airborne(f, kind, rgb, glyphS, glowS, 1, seedFor(a.hex), 1);
+        }
+      }
+      // Speed-reactive streak during a takeoff/landing event — a bright tapered bloom behind
+      // the glyph (rotated frame, +y = aft): grows on the takeoff roll, shrinks on the rollout.
+      if (!ground && tAge != null && tAge >= 0 && tAge < FLOURISH_MS) {
+        const phase = tAge / FLOURISH_MS;
+        const accel = a.transitGround === false ? phase : 1 - phase;
+        const len = (8 + (a.gs ?? 0) * 0.12) * accel;
+        if (len > 2) {
+          ctx.globalCompositeOperation = "lighter";
+          const g = ctx.createLinearGradient(0, glyphS * 0.3, 0, glyphS * 0.3 + len);
+          g.addColorStop(0, `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},0.5)`);
+          g.addColorStop(1, `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},0)`);
+          ctx.strokeStyle = g;
+          ctx.lineCap = "round";
+          ctx.lineWidth = glyphS * 0.5;
+          ctx.beginPath(); ctx.moveTo(0, glyphS * 0.3); ctx.lineTo(0, glyphS * 0.3 + len); ctx.stroke();
+          ctx.globalCompositeOperation = "source-over";
         }
       }
       ctx.restore();
@@ -143,7 +162,7 @@ export class AircraftLayer implements Layer {
       const age = a.transitAge;
       if (age == null || age < 0 || age >= FLOURISH_MS || a.transitLat == null || a.transitLon == null) continue;
       const q = f.cam.project(a.transitLat, a.transitLon);
-      drawFlourish(ctx, q.x, q.y, age / FLOURISH_MS, a.transitGround === true);
+      drawFlourish(ctx, q.x, q.y, age / FLOURISH_MS, a.transitGround === true, ((a.track ?? 0) + (f.cfg.mapRotationDeg ?? 0)) * DEG);
     }
 
     // Home beacon (respects the Home toggle). Gold so it stands out from the cyan UI
@@ -187,11 +206,16 @@ export class AircraftLayer implements Layer {
     if (fade < 1) ctx.globalAlpha = fade;
     if (scale !== 1) ctx.scale(scale, scale);
     if (!f.interacting) {
+      // Jewel/beacon glow: a wide faint halo, a mid ring, then a tight BRIGHTENED core, so
+      // each aircraft reads as a crisp luminous point instead of a soft blob.
       ctx.globalCompositeOperation = "lighter";
-      ctx.fillStyle = `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},0.09)`;
-      ctx.beginPath(); ctx.arc(0, 0, glowS * 2.0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},0.13)`;
-      ctx.beginPath(); ctx.arc(0, 0, glowS * 1.15, 0, Math.PI * 2); ctx.fill();
+      const r0 = rgb[0] | 0, r1 = rgb[1] | 0, r2 = rgb[2] | 0;
+      ctx.fillStyle = `rgba(${r0},${r1},${r2},0.05)`;
+      ctx.beginPath(); ctx.arc(0, 0, glowS * 2.1, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `rgba(${r0},${r1},${r2},0.10)`;
+      ctx.beginPath(); ctx.arc(0, 0, glowS * 1.0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `rgba(${Math.min(255, r0 + 45)},${Math.min(255, r1 + 45)},${Math.min(255, r2 + 45)},0.30)`;
+      ctx.beginPath(); ctx.arc(0, 0, glowS * 0.42, 0, Math.PI * 2); ctx.fill();
       ctx.globalCompositeOperation = "source-over";
     }
     const sprite = getGlyphSprite(kind, rgb, 1, glyphS, f.dpr);
@@ -203,7 +227,7 @@ export class AircraftLayer implements Layer {
 
 // One-time takeoff/landing flourish in screen space. Landing: a cool expanding ripple
 // (touchdown). Takeoff: a warm additive glow kick (liftoff). fp is 0→1 over FLOURISH_MS.
-function drawFlourish(ctx: CanvasRenderingContext2D, x: number, y: number, fp: number, landing: boolean): void {
+function drawFlourish(ctx: CanvasRenderingContext2D, x: number, y: number, fp: number, landing: boolean, screenHdg: number): void {
   ctx.save();
   if (landing) {
     for (let i = 0; i < 2; i++) {
@@ -215,6 +239,17 @@ function drawFlourish(ctx: CanvasRenderingContext2D, x: number, y: number, fp: n
       ctx.beginPath();
       ctx.arc(x, y, 5 + e * 30, 0, Math.PI * 2);
       ctx.stroke();
+    }
+    // Wheel-smoke puffs straddling the runway at the main gear — expand + fade.
+    const px = Math.cos(screenHdg), py = Math.sin(screenHdg);
+    for (let i = 0; i < 2; i++) {
+      const pp = fp - i * 0.12;
+      if (pp <= 0 || pp >= 1) continue;
+      const e = 1 - (1 - pp) * (1 - pp);
+      const r = 2.5 + e * 11, off = 4 + e * 7;
+      ctx.fillStyle = `rgba(208,214,222,${((1 - pp) * 0.38).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(x + px * off, y + py * off, r, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x - px * off, y - py * off, r, 0, Math.PI * 2); ctx.fill();
     }
   } else {
     const e = 1 - (1 - fp) * (1 - fp);

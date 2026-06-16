@@ -61,8 +61,10 @@ export class MapLayer implements Layer {
       this.tilesV = tilesVersion();
       this.builtAt = now;
       // Cross-fade only on a SETTLED re-raster (during a gesture we transform-blit and
-      // want no double-expose); turns the zoom/tile sharpen into a 200 ms dissolve.
-      this.fadeStart = hadPrev && !f.interacting ? now : 0;
+      // want no double-expose); turns the zoom/tile sharpen into a 200 ms dissolve. A FORCED
+      // re-raster (resize/rotation/style/dpr) snaps instead — fading those is wrong and could
+      // clobber an in-flight fade's buffer.
+      this.fadeStart = hadPrev && !f.interacting && !forced ? now : 0;
     }
 
     if (!this.renderedView) return;

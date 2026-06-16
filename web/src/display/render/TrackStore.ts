@@ -59,13 +59,23 @@ export class TrackStore {
       // network/poll jitter — the key to smooth interpolation. (Falls back to `now` when the
       // decoder doesn't report seen_pos.)
       const fixT = now - (a.seenPos ?? 0) * 1000;
-      // Decimate to cap growth, but keep GROUND traffic finer (taxiing moves a few m/s).
+      // A parked/holding aircraft (on the ground with ~no groundspeed) jitters in GPS by
+      // several metres; the fine ground sampling otherwise records every wobble, making it
+      // shimmy back and forth ("ground rubberband"). Treat it as stationary and PIN it to its
+      // last position. A taxiing aircraft (gs above the threshold) is captured normally.
+      const stationary = isGround && (a.gs ?? 0) < 3;
       const MOVE2 = isGround ? 1.5e-9 : 1.2e-7; // ≈ 4 m on the ground vs ≈ 38 m airborne
       const ageMs = isGround ? 1500 : 4000;
-      const moved = !last || (last.lat - a.lat) ** 2 + (last.lon - a.lon) ** 2 > MOVE2;
+      const moved = !stationary && (!last || (last.lat - a.lat) ** 2 + (last.lon - a.lon) ** 2 > MOVE2);
       const aged = last && fixT - last.t > ageMs;
-      if ((moved || aged) && (!last || fixT > last.t)) { // keep the timeline strictly increasing
-        tr.hist.push({ t: fixT, lat: a.lat, lon: a.lon, alt: a.altBaro ?? a.altGeom });
+      if (moved || aged) {
+        const plat = stationary && last ? last.lat : a.lat; // pin a parked aircraft, don't record jitter
+        const plon = stationary && last ? last.lon : a.lon;
+        // Keep the timeline strictly increasing even if a jittery seen_pos regressed the
+        // stamp — NUDGE forward rather than drop the fix (dropping would wedge/freeze the
+        // track until wall time overtook the bad stamp).
+        const t = last && fixT <= last.t ? last.t + 1 : fixT;
+        tr.hist.push({ t, lat: plat, lon: plon, alt: a.altBaro ?? a.altGeom });
         if (tr.hist.length > 700) tr.hist.shift();
       }
     }
@@ -141,10 +151,18 @@ function predictPos(hist: Sample[], a: Aircraft, t: number): { lat: number; lon:
   if (t <= hist[0].t) return { lat: hist[0].lat, lon: hist[0].lon };
   const last = hist[hist.length - 1];
   if (t >= last.t) {
-    // On the GROUND, ADS-B surface track is noisy and taxiing is slow/stop-start, so
-    // dead-reckoning makes it veer — HOLD the last fix until the next one instead. (Airborne
-    // keeps coasting at velocity.) Between fixes it still interpolates smoothly either way.
-    if (a.onGround) return { lat: last.lat, lon: last.lon };
+    if (a.onGround) {
+      // Ground: coast along the actual TAXI PATH — the direction of the last movement segment
+      // — capped short, so it glides smoothly instead of pausing, and doesn't veer on the
+      // noisy reported surface track. A pinned/parked aircraft has a ~zero segment, so it
+      // stays put.
+      if (hist.length < 2) return { lat: last.lat, lon: last.lon };
+      const prev = hist[hist.length - 2];
+      const dt = last.t - prev.t;
+      if (dt <= 0) return { lat: last.lat, lon: last.lon };
+      const k = Math.min(t - last.t, 1500) / dt; // up to 1.5 s of taxi coast
+      return { lat: last.lat + (last.lat - prev.lat) * k, lon: last.lon + (last.lon - prev.lon) * k };
+    }
     return deadReckon(last, a.gs, a.track, t - last.t);
   }
   for (let i = hist.length - 1; i > 0; i--) {

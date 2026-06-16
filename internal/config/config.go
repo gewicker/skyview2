@@ -73,10 +73,7 @@ type Config struct {
 	CenterLon   float64 `json:"centerLon"`
 	RadiusMiles float64 `json:"radiusMiles"`
 
-	// Ambient-skin framing.
-	Zoom                 float64 `json:"zoom"`
-	ViewOffsetEastMiles  float64 `json:"viewOffsetEastMiles"`
-	ViewOffsetNorthMiles float64 `json:"viewOffsetNorthMiles"`
+	Zoom float64 `json:"zoom"`
 
 	// Map-skin view.
 	MapZoom        float64 `json:"mapZoom"`
@@ -85,10 +82,9 @@ type Config struct {
 	MapRotationDeg float64 `json:"mapRotationDeg"`
 
 	// Calibration.
-	RotationDeg     float64 `json:"rotationDeg"`
-	MirrorX         bool    `json:"mirrorX"`
-	MirrorY         bool    `json:"mirrorY"`
-	LabelRotationDeg float64 `json:"labelRotationDeg"`
+	RotationDeg float64 `json:"rotationDeg"`
+	MirrorX     bool    `json:"mirrorX"`
+	MirrorY     bool    `json:"mirrorY"`
 
 	// Filtering.
 	MinAltitudeFt float64 `json:"minAltitudeFt"`
@@ -138,8 +134,6 @@ type Config struct {
 	NotableWebhook    string `json:"notableWebhook"`
 	ShowWinds         bool   `json:"showWinds"`
 	ShowPhotos        bool   `json:"showPhotos"`
-	ShowDestArc       bool   `json:"showDestArc"`
-	ShowRouteDetail   bool   `json:"showRouteDetail"`
 	BurnInOrbit       bool   `json:"burnInOrbit"`
 
 	// Spotlight.
@@ -148,12 +142,7 @@ type Config struct {
 	SpotlightLat      float64 `json:"spotlightLat"`
 	SpotlightLon      float64 `json:"spotlightLon"`
 
-	// Sky (ambient skin).
-	ShowStars       bool    `json:"showStars"`
-	ShowSun         bool    `json:"showSun"`
-	ShowMoon        bool    `json:"showMoon"`
-	ShowSatellites  bool    `json:"showSatellites"`
-	StarMagLimit    float64 `json:"starMagLimit"`
+	// Sky time offset (used by the sun/golden-hour math).
 	SkyTimeOffsetMin float64 `json:"skyTimeOffsetMin"`
 
 	// Navaid + procedure overlays (off by default). Vector data is bundled in the
@@ -190,10 +179,8 @@ func Default() Config {
 		ShowAirport: true, ShowApproaches: true, ShowFinal: true, ShowTraffic: true,
 		ShowHome: true, ShowRelative: true, HighlightEmergency: true,
 		ShowNotable: true, NotableFlash: true, ShowWinds: true, ShowPhotos: true,
-		ShowDestArc: true, ShowRouteDetail: true, BurnInOrbit: false, // IPS panel — no burn-in risk
+		BurnInOrbit: false, // IPS panel — no burn-in risk
 		ShowSpotlight: true, SpotlightRadiusMi: 15, SpotlightLat: 47.618431, SpotlightLon: -122.191076,
-		ShowStars: true, ShowSun: true, ShowMoon: true, ShowSatellites: true,
-		StarMagLimit: 2.6,
 		ProcRasterOpacity: 0.5, // overlays off by default; opacity used when raster enabled
 		MonitorMode: "lightsout", LightsOutHour: 23, ShowCursor: false,
 	}

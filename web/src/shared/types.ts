@@ -21,9 +21,9 @@ export interface ShowFields {
 
 export interface Config {
   centerLat: number; centerLon: number; radiusMiles: number;
-  zoom: number; viewOffsetEastMiles: number; viewOffsetNorthMiles: number;
+  zoom: number;
   mapZoom: number; mapCenterLat: number; mapCenterLon: number; mapRotationDeg: number;
-  rotationDeg: number; mirrorX: boolean; mirrorY: boolean; labelRotationDeg: number;
+  rotationDeg: number; mirrorX: boolean; mirrorY: boolean;
   minAltitudeFt: number; maxAltitudeFt: number; hideOnGround: boolean;
   interpolate: boolean; maxExtrapolationSec: number; staleSec: number;
   maxFps: number; renderScale: number;

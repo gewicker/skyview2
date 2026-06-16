@@ -49,4 +49,16 @@ export const KRNT: Airport = {
   runways: [{ leIdent: "16", heIdent: "34", le: [47.500474, -122.216853], he: [47.485795, -122.214631], widthFt: 200 }],
 };
 
-export const AIRPORTS: Airport[] = [KSEA, KBFI, KRNT];
+export const KPAE: Airport = {
+  icao: "KPAE",
+  iata: "PAE",
+  name: "Paine Field",
+  elevFt: 606,
+  // FAA/airnav thresholds; lengths verified (9,010 / 3,004 ft).
+  runways: [
+    { leIdent: "16R", heIdent: "34L", le: [47.921336, -122.285851], he: [47.896640, -122.285303], widthFt: 150 },
+    { leIdent: "16L", heIdent: "34R", le: [47.906425, -122.271693], he: [47.898192, -122.271601], widthFt: 75 },
+  ],
+};
+
+export const AIRPORTS: Airport[] = [KSEA, KBFI, KRNT, KPAE];

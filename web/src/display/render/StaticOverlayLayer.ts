@@ -15,6 +15,7 @@ export class StaticOverlayLayer implements Layer {
   private cv = document.createElement("canvas");
   private cx = this.cv.getContext("2d")!; // transparent — composites over the basemap
   private key = "";
+  private ck = ""; // last config-key (toggles etc.) — re-bakes even mid-gesture when it changes
   private view: RView | null = null;
 
   /** `cfgKey` returns a string of any CONFIG that changes what the wrapped layers draw
@@ -26,15 +27,18 @@ export class StaticOverlayLayer implements Layer {
 
   draw(f: FrameContext): void {
     const v = f.view;
+    const ck = this.cfgKey(f);
     const key = [
       v.mapCenterLat, v.mapCenterLon, v.mapZoom, f.cfg.mapRotationDeg,
-      f.cfg.mirrorX, f.cfg.mirrorY, f.w, f.h, f.dpr, this.cfgKey(f),
+      f.cfg.mirrorX, f.cfg.mirrorY, f.w, f.h, f.dpr, ck,
     ].join("|");
-    // Re-bake only when the view/config changes AND we're settled (a gesture transform-blits
-    // the existing buffer; the oversized PAD covers a pan, then it re-bakes on release).
-    if (!this.view || (key !== this.key && !f.interacting)) {
+    // Re-bake when the view/config changes and we're settled (a gesture transform-blits the
+    // existing buffer; the oversized PAD covers a pan, then it re-bakes on release) — BUT a
+    // config (toggle) change re-bakes immediately, even mid-gesture, so it never shows stale.
+    if (!this.view || (key !== this.key && (!f.interacting || ck !== this.ck))) {
       this.bake(f);
       this.key = key;
+      this.ck = ck;
       this.view = { lat: v.mapCenterLat, lon: v.mapCenterLon, zoom: v.mapZoom };
     }
     // Place/scale the buffer to the live camera (1:1 and centred at rest).
