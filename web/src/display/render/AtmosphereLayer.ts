@@ -56,17 +56,15 @@ export class AtmosphereLayer implements Layer {
     // Lights-out stays fully LIVELY all evening (it mutes via the amber block above at
     // bedtime, not gradually) — only "night" mode dims gradually by the sun.
     if (mode === "day" || mode === "lightsout") dim = 0;
-    else {
-      const nightFloor = mode === "red" ? 0.7 : 0.55;
-      dim = nightFloor * (1 - dayFrac);
-    }
+    // Only "night" reaches here (day/lightsout = 0 above; red/lights-out returned early).
+    else dim = 0.55 * (1 - dayFrac);
     // Manual brightness trims further (never brightens past auto).
     dim = clamp(dim + (1 - clamp(f.cfg.brightness ?? 1, 0, 1)) * 0.7, 0, 0.92);
 
     // --- golden-hour warm wash ------------------------------------------- //
     // Strongest as the sun crosses the horizon; fades out by ~8° up / ~6° down.
     const golden = this.alt < 8 && this.alt > -6 ? clamp(1 - Math.abs(this.alt) / 7, 0, 1) : 0;
-    if (golden > 0 && mode !== "red") {
+    if (golden > 0) {
       ctx.save();
       ctx.globalCompositeOperation = "soft-light";
       // Bias the warmth toward the horizon where the sun sits (E at dawn, W at dusk).
