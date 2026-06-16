@@ -98,14 +98,25 @@ export class SpotlightLayer implements Layer {
     const ctx = f.ctx;
     const p = f.cam.project(target.lat, target.lon);
 
-    // Pulsing ring.
+    // Bold "overhead" reticle: a thick pulsing ring + four crosshair ticks so the
+    // featured aircraft is unmistakable.
     const pulse = 0.5 + 0.5 * Math.sin(f.t * 3);
+    const r = 18 + 4 * pulse;
     ctx.save();
-    ctx.strokeStyle = this.ring(0.35 + 0.4 * pulse);
-    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = this.ring(0.62 + 0.32 * pulse);
+    ctx.lineWidth = 3.2;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 16 + 4 * pulse, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.lineWidth = 2.4;
+    for (const deg of [0, 90, 180, 270]) {
+      const a = (deg * Math.PI) / 180;
+      ctx.beginPath();
+      ctx.moveTo(p.x + Math.cos(a) * (r + 2), p.y + Math.sin(a) * (r + 2));
+      ctx.lineTo(p.x + Math.cos(a) * (r + 8), p.y + Math.sin(a) * (r + 8));
+      ctx.stroke();
+    }
     ctx.restore();
 
     this.drawPlacard(f, target, sLat, sLon);
