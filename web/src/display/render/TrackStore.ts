@@ -48,7 +48,7 @@ export class TrackStore {
       const isGround = !!a.onGround;
       if (tr.prevGround === undefined) { tr.prevGround = isGround; tr.groundSince = now; }
       else if (isGround !== tr.prevGround) {
-        if (now - (tr.groundSince ?? now) > 4000) {
+        if (now - (tr.groundSince ?? now) > 2500) { // prior state held a bit (debounce threshold flicker)
           tr.transitAt = now; tr.transitGround = isGround; tr.transitLat = a.lat; tr.transitLon = a.lon;
         }
         tr.prevGround = isGround; tr.groundSince = now;

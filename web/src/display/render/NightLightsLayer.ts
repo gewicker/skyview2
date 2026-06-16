@@ -33,7 +33,10 @@ export class NightLightsLayer implements Layer {
       this.sunAt = wall;
       this.sunAlt = sunAltitude(f.cfg.centerLat, f.cfg.centerLon, new Date(wall + (f.cfg.skyTimeOffsetMin || 0) * 60000));
     }
-    if (this.sunAlt > -1) return; // daytime
+    // Night factor (0 day → 1 night), smooth through twilight — fades the runway/approach
+    // lights in at dusk and out at dawn instead of a hard switch.
+    const nf = Math.max(0, Math.min(1, (3 - this.sunAlt) / 9));
+    if (nf < 0.04) return; // full daylight
 
     const perNM = pxPerNM(f);
     if (perNM < SHOW_PXNM) return; // only when the airport is large enough to read
@@ -43,6 +46,7 @@ export class NightLightsLayer implements Layer {
 
     const ctx = f.ctx;
     ctx.save();
+    ctx.globalAlpha = nf; // additive lights scale with the night factor
     ctx.globalCompositeOperation = "lighter";
     for (const e of active) this.drawEnd(f, ctx, e, perNM);
     ctx.restore();

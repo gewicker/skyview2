@@ -9,12 +9,20 @@ import { classifyGlyph, GLYPH_SCALE, drawGlyphSpinners, hasSpinners } from "./ai
 import { getGlyphSprite } from "./glyphCache";
 import { altRamp, hexRGB, type RGB } from "./colors";
 import { AIRPORTS } from "./airports";
+import { sunAltitude } from "./sun";
+
+// Time-of-day night factor (0 in daylight → 1 at full night), smooth through twilight.
+// Aircraft + runway lights scale to this so they fade in at dusk like the real thing.
+function nightFactor(sunAltDeg: number): number {
+  const f = (3 - sunAltDeg) / 9; // 0 at +3°, 1 at −6°
+  return f < 0 ? 0 : f > 1 ? 1 : f;
+}
 
 const DEG = Math.PI / 180;
 const LINE_H = 14;
 const GROUND_RGB: RGB = [200, 122, 60]; // subdued warm — ground/apron
-const MORPH_MS = 700;    // glyph crossfade between ground chevron and airborne silhouette
-const FLOURISH_MS = 1300; // one-time touchdown ripple / liftoff glow
+const MORPH_MS = 1000;    // glyph crossfade between ground chevron and airborne silhouette
+const FLOURISH_MS = 2200; // one-time touchdown ripple+smoke / liftoff glow+streak (longer = easier to catch)
 
 // Label widths were measured for every line of every aircraft every frame; the strings only
 // change ~1 Hz (and labels use one fixed font here), so cache them.
@@ -68,9 +76,16 @@ function departingLocal(a: Visible): string | null {
 
 export class AircraftLayer implements Layer {
   readonly name = "aircraft";
+  private sunAt = 0;
+  private nf = 0; // cached night factor (recomputed every ~20 s)
 
   draw(f: FrameContext): void {
     const ctx = f.ctx;
+    const wall = Date.now();
+    if (wall - this.sunAt > 20000) {
+      this.sunAt = wall;
+      this.nf = nightFactor(sunAltitude(f.cfg.centerLat, f.cfg.centerLon, new Date(wall + (f.cfg.skyTimeOffsetMin || 0) * 60000)));
+    }
     // Airborne aircraft read larger (0.75×) so they stand out on a small panel; ground
     // traffic is drawn as crisp little chevrons/dots (see drawGroundMarker) so a busy
     // ramp reads as distinct aircraft instead of one orange blob.
@@ -116,6 +131,28 @@ export class AircraftLayer implements Layer {
         } else {
           this.airborne(f, kind, rgb, glyphS, glowS, 1, seedFor(a.hex), 1);
         }
+      }
+      // Landing light: on final to a PREDICTED runway, the nose light comes on — a warm forward
+      // beam that brightens as it nears the predicted touchdown (day + night, brighter at night).
+      if (!ground && arrivingLocal(a)) {
+        const altF = a.altBaro ?? 3000;
+        const close = Math.max(0.25, Math.min(1, 1 - (altF - 200) / 2800)); // brighter lower/closer
+        const flick = 0.88 + 0.12 * Math.sin(f.t * 22 + seedFor(a.hex));
+        const amp = close * flick * (0.45 + 0.55 * this.nf);
+        ctx.globalCompositeOperation = "lighter";
+        const ny = -glyphS * 0.45, reach = glyphS * (2.2 + 1.6 * close);
+        const g = ctx.createLinearGradient(0, ny, 0, ny - reach);
+        g.addColorStop(0, `rgba(255,250,214,${(0.55 * amp).toFixed(3)})`);
+        g.addColorStop(1, "rgba(255,250,214,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(0, ny);
+        ctx.lineTo(-glyphS * 0.7, ny - reach);
+        ctx.lineTo(glyphS * 0.7, ny - reach);
+        ctx.closePath();
+        ctx.fill();
+        lamp(ctx, 0, ny, 1.6 + close, `rgba(255,252,226,${(0.9 * amp).toFixed(3)})`);
+        ctx.globalCompositeOperation = "source-over";
       }
       // Speed-reactive streak during a takeoff/landing event — a bright tapered bloom behind
       // the glyph (rotated frame, +y = aft): grows on the takeoff roll, shrinks on the rollout.
@@ -221,6 +258,7 @@ export class AircraftLayer implements Layer {
     const sprite = getGlyphSprite(kind, rgb, 1, glyphS, f.dpr);
     ctx.drawImage(sprite.canvas, -sprite.half, -sprite.half, sprite.half * 2, sprite.half * 2);
     if (hasSpinners(kind)) drawGlyphSpinners(ctx, kind, glyphS, rgb, 1, f.t, seed);
+    drawNavLights(ctx, glyphS, seed, f.t, this.nf);
     ctx.restore();
   }
 }
@@ -404,6 +442,39 @@ function drawGroundMarker(ctx: CanvasRenderingContext2D, base: number, gs: numbe
     ctx.stroke();
   }
   ctx.restore();
+}
+
+function lamp(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, c: string): void {
+  ctx.fillStyle = c;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Nav lights on an airborne aircraft, in its rotated frame (nose = −y): steady red (port) +
+// green (starboard) + white (tail) position lights, a slow red beacon pulse, and bright white
+// anti-collision STROBES that double-flash ~1 Hz — seeded per aircraft so the sky twinkles out
+// of sync. `nf` is the time-of-day night factor (0 day → 1 night): position/beacon fade in at
+// dusk like the real lights; strobes keep a little daytime visibility.
+function drawNavLights(ctx: CanvasRenderingContext2D, glyphS: number, seed: number, t: number, nf: number): void {
+  const w = glyphS * 0.6;
+  if (nf > 0.04) {
+    lamp(ctx, -w, glyphS * 0.05, 1.3, `rgba(255,70,58,${(0.9 * nf).toFixed(3)})`);  // port (red)
+    lamp(ctx, w, glyphS * 0.05, 1.3, `rgba(70,255,110,${(0.9 * nf).toFixed(3)})`);  // starboard (green)
+    lamp(ctx, 0, glyphS * 0.55, 1.1, `rgba(240,248,255,${(0.8 * nf).toFixed(3)})`); // tail (white)
+    ctx.globalCompositeOperation = "lighter";
+    const beat = Math.max(0, Math.sin((t * 1.3 + seed) * Math.PI * 2));
+    lamp(ctx, 0, glyphS * 0.1, 1.4 + beat * 1.6, `rgba(255,55,45,${(0.35 * beat * nf).toFixed(3)})`); // beacon
+    ctx.globalCompositeOperation = "source-over";
+  }
+  const ph = (t * 0.8 + seed) % 1;
+  if (ph < 0.045 || (ph > 0.1 && ph < 0.14)) { // white strobe double-flash (a bit visible by day too)
+    ctx.globalCompositeOperation = "lighter";
+    const sa = (0.3 + 0.65 * nf).toFixed(3);
+    lamp(ctx, -w, glyphS * 0.05, 2.6, `rgba(255,255,255,${sa})`);
+    lamp(ctx, w, glyphS * 0.05, 2.6, `rgba(255,255,255,${sa})`);
+    ctx.globalCompositeOperation = "source-over";
+  }
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
