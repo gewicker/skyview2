@@ -13,6 +13,7 @@ import { NavaidLayer } from "./render/NavaidLayer";
 import { PlaceLabelsLayer } from "./render/PlaceLabelsLayer";
 import { TrailLayer } from "./render/TrailLayer";
 import { RouteLayer } from "./render/RouteLayer";
+import { AIRPORTS } from "./render/airports";
 import { LeaderLayer } from "./render/LeaderLayer";
 import { AircraftLayer } from "./render/AircraftLayer";
 import { SpotlightLayer } from "./render/SpotlightLayer";
@@ -529,7 +530,8 @@ function TapCard({ a, cfg, onClose }: { a: Aircraft; cfg: Config; onClose: () =>
 // TOWARD (its track points at it), so swap when the labelled origin is actually ahead.
 type RouteEnd = { code?: string; city?: string; lat?: number | null; lon?: number | null };
 function routeEnds(a: Aircraft): { from: RouteEnd; to: RouteEnd } | null {
-  if (!a.origin && !a.destination) return null;
+  const arr = localArrival(a); // physical destination if it's on final to a local field
+  if (!a.origin && !a.destination && !arr) return null;
   const O: RouteEnd = { code: a.origin, city: a.originName, lat: a.originLat, lon: a.originLon };
   const D: RouteEnd = { code: a.destination, city: a.destName, lat: a.destLat, lon: a.destLon };
   let from = O, to = D;
@@ -539,7 +541,27 @@ function routeEnds(a: Aircraft): { from: RouteEnd; to: RouteEnd } | null {
     const aD = angDiff(a.track, bearing(a.lat, a.lon, a.destLat, a.destLon));
     if (aO < aD - 25) { from = D; to = O; }
   }
+  // Physical reality beats the route DB: if it's on final to a local field, THAT is the
+  // destination (the route DB frequently shows the wrong leg/route for an arrival).
+  if (arr) to = { code: arr.code, city: arr.name, lat: arr.lat, lon: arr.lon };
   return { from, to };
+}
+
+// The local field an aircraft is physically landing at (low, descending, within ~8 mi of its
+// runway centroid), mirroring the on-screen "→ SEA" label logic. null if not arriving locally.
+function localArrival(a: Aircraft): { code: string; name: string; lat: number; lon: number } | null {
+  if (a.onGround || a.altBaro == null || a.altBaro > 6000 || a.lat == null || a.lon == null) return null;
+  if (a.baroRate != null && a.baroRate > -150) return null; // must be descending (or unknown)
+  let best = Infinity;
+  let hit: { code: string; name: string; lat: number; lon: number } | null = null;
+  for (const ap of AIRPORTS) {
+    let la = 0, lo = 0, n = 0;
+    for (const rw of ap.runways) { la += rw.le[0] + rw.he[0]; lo += rw.le[1] + rw.he[1]; n += 2; }
+    const flat = la / n, flon = lo / n;
+    const d = Math.hypot((a.lat - flat) * 69, (a.lon - flon) * 69 * Math.cos(flat * Math.PI / 180));
+    if (d < best) { best = d; hit = { code: ap.iata, name: ap.name, lat: flat, lon: flon }; }
+  }
+  return best <= 8 ? hit : null;
 }
 function angDiff(x: number, y: number): number {
   return Math.abs(((x - y + 540) % 360) - 180);

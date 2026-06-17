@@ -207,11 +207,23 @@ func (c *cache) hexdbRoute(cs string) *RouteInfo {
 	if !c.get("https://hexdb.io/api/v1/route/icao/"+url.PathEscape(cs), &resp) {
 		return nil
 	}
-	parts := strings.SplitN(strings.TrimSpace(resp.Route), "-", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+	// Route may be "A-B" or a multi-leg "A-VIA-B" — take the FIRST and LAST airport so a
+	// multi-segment string doesn't glue "B-C" together as one bogus destination.
+	var first, last string
+	for _, p := range strings.Split(resp.Route, "-") {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if first == "" {
+			first = p
+		}
+		last = p
+	}
+	if first == "" || last == "" || first == last {
 		return nil
 	}
-	return &RouteInfo{Origin: strings.TrimSpace(parts[0]), Destination: strings.TrimSpace(parts[1])}
+	return &RouteInfo{Origin: first, Destination: last}
 }
 
 // get decodes a successful JSON response into v; returns false on any error (so the

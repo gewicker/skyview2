@@ -14,6 +14,9 @@ export class RouteLayer implements Layer {
     if (!hex) return;
     const a = f.aircraft.find((x) => x.hex === hex);
     if (!a || a.destLat == null || a.destLon == null || a.lat == null || a.lon == null) return;
+    // Don't draw a great-circle to the filed destination once it's on approach — it's landing
+    // at a LOCAL field, so the route DB's far destination is wrong/misleading here.
+    if (a.altBaro != null && a.altBaro < 6000 && a.baroRate != null && a.baroRate < -150) return;
 
     const ctx = f.ctx;
     ctx.save();
