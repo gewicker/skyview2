@@ -8,13 +8,11 @@
 import type { Layer, FrameContext } from "./types";
 import { SEAPLANE_BASES, type SeaplaneBase, type DockMark } from "./seaplane";
 
-const LANE_FILL = "rgba(70,150,180,0.10)";   // cool, translucent — half the runway's opacity
-const LANE_EDGE = "rgba(150,205,225,0.42)";  // dashed advisory edge
-const LANE_CTR = "rgba(150,205,225,0.30)";   // dotted centerline
-const LANE_DIR = "rgba(150,205,225,0.55)";   // end direction chevron
+const LANE_CTR = "rgba(150,205,225,0.5)";    // slim dotted centerline (the lane itself)
+const LANE_DIR = "rgba(150,205,225,0.6)";    // end direction chevron
 const SHOW_MARKS_PXMI = 80;                  // fine shore detail only when zoomed into the lake
-const LANES_PXMI = 45;                        // water lanes fade in only when zoomed into the lake;
-                                             // the ambient view is the clean anchor symbol alone
+const LANE_ZOOM_MIN = 2.5;                    // map-zoom where water lanes begin to appear; the
+const LANE_ZOOM_FULL = 4;                     // ambient view (lower zoom) is the clean anchor alone
 const smooth01 = (a: number, b: number, x: number) => {
   const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
@@ -32,14 +30,14 @@ export class SeaplaneLayer implements Layer {
 
     // Lanes are zoom-gated: the sprawling water corridors clutter the ambient view, so they
     // fade in only once you zoom into the lake. The anchor (the actual chart symbol) is always on.
-    const laneVis = smooth01(LANES_PXMI, LANES_PXMI + 25, pxPerMile);
+    const laneVis = smooth01(LANE_ZOOM_MIN, LANE_ZOOM_FULL, f.view.mapZoom || 1);
     ctx.save();
     ctx.lineCap = "butt";
     for (const base of SEAPLANE_BASES) {
       if (laneVis > 0.01) {
         ctx.save();
         ctx.globalAlpha = laneVis;
-        this.drawLanes(f, base, pxPerMile);
+        this.drawLanes(f, base);
         ctx.restore();
       }
       if (pxPerMile > SHOW_MARKS_PXMI) for (const m of base.marks) this.drawMark(f, m);
@@ -48,46 +46,26 @@ export class SeaplaneLayer implements Layer {
     ctx.restore();
   }
 
-  private drawLanes(f: FrameContext, base: SeaplaneBase, pxPerMile: number): void {
+  private drawLanes(f: FrameContext, base: SeaplaneBase): void {
     const ctx = f.ctx;
-    // Long lane first so a shorter crossing lane (Kenmore 18/36) layers on top — the overlap
-    // just sums to a slightly brighter "operating area" diamond.
+    // A water landing lane is now a SLIM dotted centerline with a direction chevron at each end —
+    // NOT the old wide translucent corridor, which (two lanes from a near-common origin) read as a
+    // messy fan across the lake. The dotted line + chevrons say "advisory water lane" cleanly.
     for (const lane of base.lanes) {
       const a = f.cam.project(lane.le[0], lane.le[1]);
       const b = f.cam.project(lane.he[0], lane.he[1]);
       const dx = b.x - a.x, dy = b.y - a.y;
       const len = Math.hypot(dx, dy) || 1;
-      const ux = dx / len, uy = dy / len;
-      const nx = -uy, ny = ux;
-      const halfW = Math.min(34, Math.max(2, (lane.widthFt / 5280) * pxPerMile / 2)); // capped so it never sprawls
+      const ux = dx / len, uy = dy / len, nx = -uy, ny = ux;
 
-      // Translucent corridor (source-over, low alpha — NOT additive).
-      ctx.beginPath();
-      ctx.moveTo(a.x + nx * halfW, a.y + ny * halfW);
-      ctx.lineTo(b.x + nx * halfW, b.y + ny * halfW);
-      ctx.lineTo(b.x - nx * halfW, b.y - ny * halfW);
-      ctx.lineTo(a.x - nx * halfW, a.y - ny * halfW);
-      ctx.closePath();
-      ctx.fillStyle = LANE_FILL;
-      ctx.fill();
-
-      // Dashed advisory edges (the clearest "not a runway" tell).
-      ctx.strokeStyle = LANE_EDGE;
-      ctx.lineWidth = 1;
-      ctx.setLineDash([3, 5]);
-      ctx.beginPath();
-      ctx.moveTo(a.x + nx * halfW, a.y + ny * halfW); ctx.lineTo(b.x + nx * halfW, b.y + ny * halfW);
-      ctx.moveTo(a.x - nx * halfW, a.y - ny * halfW); ctx.lineTo(b.x - nx * halfW, b.y - ny * halfW);
-      ctx.stroke();
-
-      // Dotted centerline.
       ctx.strokeStyle = LANE_CTR;
-      ctx.setLineDash([2, 7]);
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash([2, 6]);
       ctx.beginPath();
-      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+      ctx.stroke();
       ctx.setLineDash([]);
 
-      // Direction chevrons (landing direction) at each end — instead of painted numerals.
       chevron(ctx, a, ux, uy, nx, ny);   // at le, pointing toward he
       chevron(ctx, b, -ux, -uy, nx, ny); // at he, pointing toward le
     }

@@ -14,9 +14,9 @@ import { startTraffic, tickTraffic, liveCong, desatAmount } from "./traffic";
 
 const SPACING = 22;     // base px between cars (modulated tighter by congestion)
 const CAR_CAP = 90;     // hard cap on cars drawn per frame (Pi budget)
-const FLOOR = 0.12;     // below this congestion a segment draws nothing (clear road recedes)
-const CARS_MIN = 48;    // px-per-mile where cars begin fading in (street zoom); tune on the panel
-const CARS_FULL = 72;   // px-per-mile where cars are fully shown
+const FLOOR = 0.12;        // below this congestion a segment draws nothing (clear road recedes)
+const CARS_ZOOM_MIN = 3.5; // map-zoom where cars begin fading in (street zoom); tune on the panel
+const CARS_ZOOM_FULL = 5.5;// map-zoom where cars are fully shown (DPI-independent, unlike px/mile)
 const col = (c: readonly number[], a: number) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 const smooth01 = (a: number, b: number, x: number) => {
   const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
@@ -40,13 +40,11 @@ export class HighwayLayer implements Layer {
     if (intensity < 0.02) return;
     tickTraffic(f.dt); // ease live congestion toward the latest poll's targets
     this.desat = desatAmount();
-    // Zoom-aware encoding: measure px-per-mile (one extra projection). Ribbon width grows mildly
-    // with zoom; cars only appear once zoomed into street level where they're big enough to read.
-    const p0 = f.cam.project(f.view.mapCenterLat, f.view.mapCenterLon);
-    const p1 = f.cam.project(f.view.mapCenterLat + 1 / 69, f.view.mapCenterLon);
-    const pxPerMile = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 12;
-    this.widthMul = Math.max(0.8, Math.min(3, Math.sqrt(pxPerMile / 12)));
-    this.carsVis = smooth01(CARS_MIN, CARS_FULL, pxPerMile);
+    // Zoom-aware encoding keyed on map-zoom (not px/mile, which varies with panel DPI). Ribbon
+    // width grows mildly with zoom; cars only fade in once zoomed into street level.
+    const mz = f.view.mapZoom || 1;
+    this.widthMul = Math.max(0.85, Math.min(2.2, 0.85 + 0.18 * (mz - 1)));
+    this.carsVis = smooth01(CARS_ZOOM_MIN, CARS_ZOOM_FULL, mz);
     const ctx = f.ctx;
     let budget = CAR_CAP;
 

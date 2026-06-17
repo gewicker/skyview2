@@ -31,7 +31,9 @@ let fetchedAt = 0; // local ms of last successful fetch (0 = never)
 // Per-highway working arrays (indexed by segment), built lazily from HIGHWAYS.
 const mids: Record<string, { lat: number; lon: number }[]> = {};
 const target: Record<string, Float32Array> = {}; // nearest-station congestion 0..1
-const cover: Record<string, Float32Array> = {}; // spatial coverage weight 0..1
+const cover: Record<string, Float32Array> = {}; // spatial coverage weight 0..1 (target)
+const coverEased: Record<string, Float32Array> = {}; // eased coverage — so a sensor dropping to
+                                                 // NoData fades live→model instead of snapping (blink)
 const shown: Record<string, Float32Array> = {}; // eased value actually used by the layer
 let built = false;
 
@@ -48,6 +50,7 @@ function build(): void {
     mids[hw.id] = m;
     target[hw.id] = new Float32Array(m.length);
     cover[hw.id] = new Float32Array(m.length);
+    coverEased[hw.id] = new Float32Array(m.length);
     shown[hw.id] = new Float32Array(m.length);
   }
   built = true;
@@ -107,7 +110,12 @@ export function tickTraffic(dt: number): void {
   for (const hw of HIGHWAYS) {
     const cur = shown[hw.id];
     const tgt = target[hw.id];
-    for (let i = 0; i < cur.length; i++) cur[i] += (tgt[i] - cur[i]) * k;
+    const ce = coverEased[hw.id];
+    const cov = cover[hw.id];
+    for (let i = 0; i < cur.length; i++) {
+      cur[i] += (tgt[i] - cur[i]) * k;
+      ce[i] += (cov[i] - ce[i]) * k; // ease coverage too — kills the live↔model blink on sensor churn
+    }
   }
 }
 
@@ -115,8 +123,8 @@ export function tickTraffic(dt: number): void {
  *  w folds spatial coverage with feed freshness; w=0 means "use the model". */
 export function liveCong(id: string, seg: number): { val: number; w: number } {
   const cur = shown[id];
-  const cov = cover[id];
-  if (!cur || seg < 0 || seg >= cur.length) return { val: 0, w: 0 };
+  const cov = coverEased[id];
+  if (!cur || !cov || seg < 0 || seg >= cur.length) return { val: 0, w: 0 };
   return { val: cur[seg], w: cov[seg] * freshness() };
 }
 
