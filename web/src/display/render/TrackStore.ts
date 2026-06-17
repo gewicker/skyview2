@@ -59,6 +59,20 @@ export class TrackStore {
       if (!Number.isFinite(a.lat) || !Number.isFinite(a.lon)) continue;
       if (Math.abs(a.lat) < 0.02 && Math.abs(a.lon) < 0.02) continue;                 // 0,0 null island
       if (a.lat < -89.9 || a.lat > 89.9 || a.lon < -180 || a.lon > 180) continue;     // out of range
+      // Physical-plausibility gate: a sample that's impossible for a real aircraft is a decode
+      // glitch (N655WH showed -175 ft / 400 kt on the Renton surface). Drop it so a garbage frame
+      // can't spawn or jolt a ghost; a known track just holds its last good fix. Altitude is only
+      // judged when actually reported, so a high jet with a momentarily-null altitude isn't culled.
+      {
+        const gsKt = a.gs ?? 0;
+        const altKnown = a.altBaro != null || a.altGeom != null;
+        const altF = a.altBaro ?? a.altGeom ?? 0;
+        if (gsKt > 800 || (altKnown && gsKt > 250 && altF < 1000)) { // nothing civil does 400 kt on the deck
+          const ex = this.tracks.get(a.hex);
+          if (ex) ex.lastSeen = now; // keep a known track alive; hold its last good position
+          continue;
+        }
+      }
       if (this.haveCenter) {
         const dMi = Math.hypot(a.lat - this.cLat, (a.lon - this.cLon) * Math.cos(this.cLat * DEG)) * 69;
         if (dMi > this.sanityMi) continue;                                            // implausibly far
