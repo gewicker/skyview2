@@ -159,8 +159,9 @@ export class Renderer {
     return p.x >= -m && p.x <= this.w + m && p.y >= -m && p.y <= this.h + m;
   }
 
-  /** Drop the transient override shortly after a commit, so config takes over. */
-  scheduleRelease(ms = 700): void {
+  /** Safety net only: drop the transient override if a committed view never lands in config.
+   *  The primary release is in draw() the instant config matches the override (no snap-back). */
+  scheduleRelease(ms = 3000): void {
     clearTimeout(this.releaseTimer);
     this.releaseTimer = window.setTimeout(() => { this.override = null; }, ms);
   }
@@ -170,6 +171,10 @@ export class Renderer {
   private draw(now: number, interacting = false): void {
     const cfg = this.getConfig();
     if (!cfg) return;
+    // Release the gesture override the instant the committed view has propagated into config
+    // (kiosk patches round-trip over WS; web is a React re-render). Clearing on a blind timer
+    // let the map snap back to the pre-commit view for a frame — the "rubberband".
+    if (this.override && viewMatches(this.override, cfg)) this.override = null;
     const dt = this.prev ? (now - this.prev) / 1000 : 0.016;
     this.prev = now;
     if (this.canvas.clientWidth !== this.w || this.canvas.clientHeight !== this.h) this.resize();
@@ -209,4 +214,12 @@ export class Renderer {
 
 function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
+}
+
+// True once a committed gesture view has landed in config — used to release the transient
+// override seamlessly (no rubberband) instead of on a blind timer.
+function viewMatches(v: View, c: Config): boolean {
+  return Math.abs(v.mapCenterLat - c.mapCenterLat) < 1e-5 &&
+         Math.abs(v.mapCenterLon - c.mapCenterLon) < 1e-5 &&
+         Math.abs(v.mapZoom - (c.mapZoom || 1)) < 1e-3;
 }
