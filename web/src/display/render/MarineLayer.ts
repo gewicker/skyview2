@@ -35,8 +35,10 @@ export class MarineLayer implements Layer {
     c.width = c.height = S;
     const x = c.getContext("2d")!;
     const g = x.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
-    g.addColorStop(0, "rgba(155,170,190,1)");
-    g.addColorStop(1, "rgba(155,170,190,0)");
+    // Warm-neutral grey: deliberately pulled away from the cool cyan-blue precip radar
+    // so fog (additive grey bloom) is never mistaken for light rain (translucent cyan).
+    g.addColorStop(0, "rgba(176,178,186,1)");
+    g.addColorStop(1, "rgba(176,178,186,0)");
     x.fillStyle = g;
     x.fillRect(0, 0, S, S);
     this.sprite = c;

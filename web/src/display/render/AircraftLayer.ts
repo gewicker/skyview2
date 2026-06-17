@@ -387,12 +387,40 @@ function drawLabels(ctx: CanvasRenderingContext2D, jobs: LabelJob[], f: FrameCon
   if (!jobs.length) return;
   const dens = f.cfg.labelDensity;
   let chosen = jobs;
-  if (dens !== "all") {
+  let callsignOnly: LabelJob[] = [];
+  if (dens === "adaptive") {
+    // Density-adaptive tiers: the busier the sky, the fewer FULL cards — which is what
+    // frees the visual budget for the ambient layers underneath. Beyond the full tier a
+    // handful collapse to a faded callsign-only line; the rest keep glyph+trail, no text.
+    const N = jobs.length;
+    const base = Math.max(1, f.cfg.nearestN ?? 8);
+    let K = N <= 12 ? base : N <= 25 ? Math.round(base * 0.6) : 3;
+    K = Math.min(K, N);
+    const sorted = [...jobs].sort((a, b) => a.dist - b.dist);
+    chosen = sorted.slice(0, K);
+    callsignOnly = sorted.slice(K, K + Math.min(6, N - K));
+    if (f.selectedHex && !chosen.some((j) => j.hex === f.selectedHex)) {
+      const sel = jobs.find((j) => j.hex === f.selectedHex);
+      if (sel) { chosen.push(sel); callsignOnly = callsignOnly.filter((j) => j.hex !== f.selectedHex); }
+    }
+  } else if (dens !== "all") {
     const n = dens === "nearestOnly" ? 1 : Math.max(1, f.cfg.nearestN ?? 8);
     chosen = [...jobs].sort((a, b) => a.dist - b.dist).slice(0, n);
     if (f.selectedHex && !chosen.some((j) => j.hex === f.selectedHex)) {
       const sel = jobs.find((j) => j.hex === f.selectedHex);
       if (sel) chosen.push(sel);
+    }
+  }
+
+  // Callsign-only tier: a single faded line at the glyph, no plate, fading with distance
+  // from home — distant ambient traffic dims its text without vanishing. Drawn first so the
+  // full cards sit on top.
+  if (callsignOnly.length) {
+    const maxg = Math.max(0.01, (f.cfg.radiusMiles ?? 22) / 69); // ~degrees
+    for (const j of callsignOnly) {
+      const gd = Math.sqrt(j.dist);
+      const fade = Math.max(0.6, Math.min(1, 1 - gd / maxg));
+      drawCallsign(ctx, j.lines[0], j.ax, j.ay, 0.7 * fade);
     }
   }
 
@@ -442,6 +470,20 @@ function drawLabel(ctx: CanvasRenderingContext2D, lines: string[], x: number, cy
     ctx.fillStyle = i === 0 ? "rgba(242,246,251,0.99)" : "rgba(208,217,228,0.93)";
     ctx.fillText(lines[i], x, y);
   }
+}
+
+// Callsign-only label for the mid tier: just the primary line, no plate, alpha-faded.
+function drawCallsign(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, alpha: number): void {
+  if (!text) return;
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(0,0,0,0.6)";
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = "rgba(226,233,243,0.96)";
+  ctx.fillText(text, x, y);
+  ctx.restore();
 }
 
 function labelLines(a: Visible, cfg: Config): string[] {

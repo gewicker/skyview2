@@ -102,6 +102,34 @@ export default function Control({ config: c, surface, onChange, onPush, onReset,
             <Slider value={c.marineLayerIntensity ?? 0.6} min={0} max={1} step={0.05} onChange={(v) => set({ marineLayerIntensity: v })} />
           </ListRow>
         )}
+        <ListRow label="Precip radar"><Switch value={c.showRadar} onChange={(v) => set({ showRadar: v })} /></ListRow>
+        {c.showRadar && (
+          <ListRow label={`Radar ${Math.round((c.radarOpacity ?? 0.55) * 100)}%`}>
+            <Slider value={c.radarOpacity ?? 0.55} min={0.2} max={0.8} step={0.05} onChange={(v) => set({ radarOpacity: v })} />
+          </ListRow>
+        )}
+        <ListRow label="Highway traffic"><Switch value={c.showHighways} onChange={(v) => set({ showHighways: v })} /></ListRow>
+        {c.showHighways && (
+          <ListRow label={`Highway ${Math.round((c.highwayIntensity ?? 0.6) * 100)}%`}>
+            <Slider value={c.highwayIntensity ?? 0.6} min={0} max={1} step={0.05} onChange={(v) => set({ highwayIntensity: v })} />
+          </ListRow>
+        )}
+        <ListRow label="Vessel traffic"><Switch value={c.showVessels} onChange={(v) => set({ showVessels: v })} /></ListRow>
+        {c.showVessels && (
+          <ListRow label={`Vessels ${Math.round((c.vesselIntensity ?? 0.7) * 100)}%`}>
+            <Slider value={c.vesselIntensity ?? 0.7} min={0} max={1} step={0.05} onChange={(v) => set({ vesselIntensity: v })} />
+          </ListRow>
+        )}
+        <ListRow label="Ambient labels (calm)"><Switch value={c.ambientMode !== false} onChange={(v) => set({ ambientMode: v })} /></ListRow>
+        <ListRow label="Ambient Night preset">
+          <Btn onClick={() => set({
+            ambientMode: true, labelDensity: "adaptive", nearestN: 6,
+            showMarineLayer: true, marineLayerIntensity: 0.55,
+            showRadar: true, radarOpacity: 0.5,
+            showVessels: true, vesselIntensity: 0.6,
+            showHighways: false, monitorMode: "night", lightsMode: "auto",
+          })}>Apply</Btn>
+        </ListRow>
       </ListSection>
 
       <ListSection title="Navigation (charts)">
@@ -128,11 +156,11 @@ export default function Control({ config: c, surface, onChange, onPush, onReset,
       <ListSection title="Labels">
         <ListRow label="Density" first>
           <Segmented<LabelDensity> value={c.labelDensity}
-            options={[{ value: "all", label: "All" }, { value: "nearestN", label: "Nearest N" }, { value: "nearestOnly", label: "Nearest" }]}
+            options={[{ value: "adaptive", label: "Adaptive" }, { value: "all", label: "All" }, { value: "nearestN", label: "Nearest N" }, { value: "nearestOnly", label: "Nearest" }]}
             onChange={(v) => set({ labelDensity: v })} />
         </ListRow>
-        {c.labelDensity === "nearestN" && (
-          <ListRow label="How many"><Slider value={c.nearestN} min={1} max={20} step={1} onChange={(v) => set({ nearestN: v })} /></ListRow>
+        {(c.labelDensity === "nearestN" || c.labelDensity === "adaptive") && (
+          <ListRow label={c.labelDensity === "adaptive" ? "Full cards" : "How many"}><Slider value={c.nearestN} min={1} max={20} step={1} onChange={(v) => set({ nearestN: v })} /></ListRow>
         )}
         <ListRow label="Type"><Switch value={c.showFields.type} onChange={(v) => setField("type", v)} /></ListRow>
         <ListRow label="Altitude"><Switch value={c.showFields.altitude} onChange={(v) => setField("altitude", v)} /></ListRow>

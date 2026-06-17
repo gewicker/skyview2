@@ -7,7 +7,7 @@ export type MapStyle = "satellite" | "wire" | "dark";
 export type GridOverlay = "off" | "rings" | "grid";
 export type MonitorMode = "day" | "night" | "red" | "lightsout";
 export type TrailMode = "flat" | "altitude" | "climb";
-export type LabelDensity = "all" | "nearestN" | "nearestOnly";
+export type LabelDensity = "all" | "nearestN" | "nearestOnly" | "adaptive";
 
 export interface Palette {
   bg: string; glyph: string; trail: string; accent: string;
@@ -43,6 +43,10 @@ export interface Config {
   showProcRaster: boolean; procRasterUrl: string; procRasterOpacity: number;
   lightsMode: string; // "auto" | "on" | "off" — aircraft + airport lighting
   showMarineLayer: boolean; marineLayerIntensity: number; // coastal fog overlay
+  ambientMode: boolean; // non-aircraft layers stay label-free (ferries + tapped excepted)
+  showRadar: boolean; radarOpacity: number; // keyless precip radar
+  showHighways: boolean; highwayIntensity: number; // synthetic road traffic
+  showVessels: boolean; vesselIntensity: number; // synthetic Sound vessel traffic
 
   monitorMode: MonitorMode; lightsOutHour: number; muteUntil: number; showCursor: boolean;
 }

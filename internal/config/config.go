@@ -140,6 +140,22 @@ type Config struct {
 	ShowMarineLayer      bool    `json:"showMarineLayer"`
 	MarineLayerIntensity float64 `json:"marineLayerIntensity"`
 
+	// Ambient/focus model + ambient layers. AmbientMode keeps non-aircraft layers
+	// label-free (ferries + tapped contact excepted) so they add life without clutter.
+	AmbientMode bool `json:"ambientMode"`
+
+	// Precip radar (keyless RainViewer) — off by default; auto-suppresses when it's clear.
+	ShowRadar    bool    `json:"showRadar"`
+	RadarOpacity float64 `json:"radarOpacity"`
+
+	// Synthetic highway traffic (bundled road geometry; time-of-day congestion) — off by default.
+	ShowHighways     bool    `json:"showHighways"`
+	HighwayIntensity float64 `json:"highwayIntensity"`
+
+	// Synthetic marine-vessel traffic (Puget Sound shipping/ferry lanes) — off by default.
+	ShowVessels    bool    `json:"showVessels"`
+	VesselIntensity float64 `json:"vesselIntensity"`
+
 	// Spotlight.
 	ShowSpotlight     bool    `json:"showSpotlight"`
 	SpotlightRadiusMi float64 `json:"spotlightRadiusMi"`
@@ -181,7 +197,7 @@ func Default() Config {
 		Fonts:       Fonts{Label: "system-ui, sans-serif", Mono: "ui-monospace, monospace"},
 		GlyphSizePx: 24, AltitudeColor: true, TrailMode: "climb", TrailSeconds: 40,
 		TrailBoost: 0.5, Brightness: 1,
-		LabelDensity: "nearestN", NearestN: 8,
+		LabelDensity: "adaptive", NearestN: 8,
 		ShowFields: ShowFields{Airline: true, Flight: true, Type: true, Altitude: true,
 			Speed: true, Destination: true, Registration: false},
 		ShowAirport: true, ShowApproaches: true, ShowFinal: true, ShowTraffic: true,
@@ -192,6 +208,10 @@ func Default() Config {
 		ProcRasterOpacity: 0.5, // overlays off by default; opacity used when raster enabled
 		LightsMode:           "auto",
 		MarineLayerIntensity: 0.6,
+		AmbientMode:          true,
+		RadarOpacity:         0.55,
+		HighwayIntensity:     0.6,
+		VesselIntensity:      0.7,
 		MonitorMode:          "lightsout", LightsOutHour: 23, ShowCursor: false,
 	}
 }

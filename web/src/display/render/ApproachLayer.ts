@@ -66,31 +66,29 @@ export class ApproachLayer implements Layer {
       const m = match(a);
       if (!m) continue;
       const p = f.cam.project(a.lat, a.lon);
-      const pulse = 0.5 + 0.5 * Math.sin(f.t * 4);
 
-      // Diamond bracket around the target.
-      ctx.strokeStyle = `rgba(120,225,255,${(0.55 + 0.35 * pulse).toFixed(3)})`;
-      ctx.lineWidth = 1.5;
-      const r = 13;
-      ctx.beginPath();
-      ctx.moveTo(p.x, p.y - r); ctx.lineTo(p.x + r, p.y);
-      ctx.lineTo(p.x, p.y + r); ctx.lineTo(p.x - r, p.y);
-      ctx.closePath();
-      ctx.stroke();
-
-      // Runway tag — centered BELOW the glyph. The identity label sits to the
-      // right at the glyph's vertical center, so anchoring here keeps the two from
-      // overlapping (the old p.y anchor buried the callsign under "… mi").
+      // "Established on final" is conveyed by the runway tag itself — no enclosing
+      // bracket. Rule across the app: shapes around a target mean SELECTION; status is
+      // shown by colour/weight. (The old cyan diamond collided with the cyan selection
+      // ring, so a glance couldn't tell "selected" from "merely on final".) The tag gets
+      // a bright treatment + a "locked on final" bullet instead — far cheaper than a
+      // pulsing reticle, and unambiguous. No shadowBlur (Pi software render).
       const tag = `${m.ident} ${m.icao.replace(/^K/, "")} · ${m.miles.toFixed(1)} mi`;
       ctx.font = "600 11px system-ui, sans-serif";
-      ctx.textAlign = "center";
+      ctx.textAlign = "left";
       const tw = ctx.measureText(tag).width;
-      const ty = p.y + r + 12;
+      const bullet = 5; // cyan "on final" dot + gap before the text
+      const boxW = bullet + 4 + tw;
+      const ty = p.y + 18;            // centered below the glyph (no diamond offset now)
+      const bx = p.x - boxW / 2;
       ctx.fillStyle = "rgba(8,20,28,0.72)";
-      roundRect(ctx, p.x - tw / 2 - 5, ty - 9, tw + 10, 18, 4);
+      roundRect(ctx, bx - 5, ty - 9, boxW + 10, 18, 4);
       ctx.fill();
-      ctx.fillStyle = "rgba(170,235,255,0.95)";
-      ctx.fillText(tag, p.x, ty);
+      ctx.fillStyle = "rgba(150,230,255,0.95)"; // brighter cyan = established on final
+      ctx.beginPath();
+      ctx.arc(bx + 2, ty, 2.5, 0, 6.283);
+      ctx.fill();
+      ctx.fillText(tag, bx + bullet + 4, ty);
     }
     ctx.restore();
   }

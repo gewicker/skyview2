@@ -14,6 +14,9 @@ import { PlaceLabelsLayer } from "./render/PlaceLabelsLayer";
 import { TrailLayer } from "./render/TrailLayer";
 import { RouteLayer } from "./render/RouteLayer";
 import { MarineLayer } from "./render/MarineLayer";
+import { RadarLayer } from "./render/RadarLayer";
+import { HighwayLayer } from "./render/HighwayLayer";
+import { VesselLayer } from "./render/VesselLayer";
 import { AIRPORTS } from "./render/airports";
 import { LeaderLayer } from "./render/LeaderLayer";
 import { AircraftLayer } from "./render/AircraftLayer";
@@ -97,6 +100,7 @@ export default function Display() {
     if (!canvasRef.current) return;
     const r = new Renderer(canvasRef.current, () => cfgRef.current as Config);
     r.use(new MapLayer());
+    r.use(new RadarLayer());   // precip radar (weather) — translucent tint on the ground, off by default
     // Static airport geometry (taxiways/aprons/buildings + runways) baked into one cached
     // buffer keyed on the view — full-res at rest, re-baked only when the view settles.
     r.use(new StaticOverlayLayer([new AirportDiagramLayer(), new AirportsLayer()],
@@ -107,6 +111,8 @@ export default function Display() {
     r.use(new NavaidLayer());    // VOR roses / fixes (under traffic), off by default
     r.use(new StaticOverlayLayer([new PlaceLabelsLayer()], (f) => f.cfg.mapStyle));
     r.use(new MarineLayer());  // coastal fog (weather) — under the traffic, off by default
+    r.use(new HighwayLayer()); // synthetic road traffic (ambient) — above fog, off by default
+    r.use(new VesselLayer());  // synthetic Sound vessel traffic (ambient) — off by default
     r.use(new TrailLayer());
     r.use(new RouteLayer());   // dashed great-circle to destination for the selected aircraft
     r.use(new LeaderLayer());
