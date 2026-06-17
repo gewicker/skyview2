@@ -121,8 +121,8 @@ func (t *Traffic) poll() {
 			continue // Unknown / NoData — leave the segment to the model
 		}
 		lat, lon := f.FlowStationLocation.Latitude, f.FlowStationLocation.Longitude
-		if lat == 0 || lon == 0 {
-			continue
+		if lat == 0 || lon == 0 || !inMetro(lat, lon) {
+			continue // missing coords or outside greater Seattle
 		}
 		stations = append(stations, TrafficStation{Lat: lat, Lon: lon, Road: road, Cong: cong})
 	}
@@ -134,6 +134,18 @@ func (t *Traffic) poll() {
 	t.snap = snap
 	t.mu.Unlock()
 	t.saveCache(snap)
+}
+
+// Greater-Seattle bounding box covering our four freeways (I-5/90/405/520) with margin.
+// WSDOT returns these routes statewide (Portland, Tacoma, Spokane …); we drop anything
+// outside the metro so the payload stays small and only relevant sensors ship.
+const (
+	bbMinLat, bbMaxLat = 47.25, 47.95
+	bbMinLon, bbMaxLon = -122.55, -121.90
+)
+
+func inMetro(lat, lon float64) bool {
+	return lat >= bbMinLat && lat <= bbMaxLat && lon >= bbMinLon && lon <= bbMaxLon
 }
 
 // flowToCong maps the WSDOT FlowReadingValue enum to a 0..1 scalar.
