@@ -381,71 +381,124 @@ function TapCard({ a, cfg, onClose }: { a: Aircraft; cfg: Config; onClose: () =>
     return () => { alive = false; };
   }, [a.hex]);
 
+  const C = {
+    primary: "#F4F6F9", secondary: "#AEB7C4", tertiary: "#6B7480", accent: "#5BB8FF",
+    accentDim: "rgba(91,184,255,0.14)", up: "#6FD08C", down: "#E8A15C", div: "rgba(255,255,255,0.07)",
+  };
+  const callsign = a.flight || a.registration || a.hex.toUpperCase();
+  const ends = routeEnds(a);
+  const onGround = !!a.onGround;
+  const altVal = onGround ? "Ground" : a.altBaro != null ? Math.round(a.altBaro).toLocaleString() : "—";
+  const spdVal = a.gs != null ? Math.round(a.gs).toLocaleString() : "—";
+  const vr = a.baroRate;
+  const level = onGround || vr == null || Math.abs(vr) < 100;
+  const vsArrow = level ? "–" : vr! > 0 ? "▲" : "▼";
+  const vsVal = level ? "Level" : Math.abs(Math.round(vr!)).toLocaleString();
+  const apTgt = !onGround && (a.selAlt ?? a.fmsAlt) != null ? Math.round((a.selAlt ?? a.fmsAlt)!).toLocaleString() : null;
+  const foot = [a.squawk ? `SQ ${a.squawk}` : "", a.registration || "", a.typeCode || ""].filter(Boolean).join("   ·   ");
   const d = haversine(cfg.centerLat, cfg.centerLon, a.lat, a.lon);
   const brg = a.lat != null && a.lon != null ? bearing(cfg.centerLat, cfg.centerLon, a.lat, a.lon) : null;
-  const rows: [string, string][] = [];
-  if (a.onGround) rows.push(["Altitude", "On ground"]);
-  else if (a.altBaro != null) {
-    const arr = a.baroRate != null && Math.abs(a.baroRate) >= 150 ? (a.baroRate > 0 ? " ↑" : " ↓") : "";
-    rows.push(["Altitude", `${Math.round(a.altBaro).toLocaleString()} ft${arr}`]);
-  }
-  if (a.gs != null) rows.push(["Ground speed", `${Math.round(a.gs)} kt`]);
-  const air: string[] = [];
-  if (a.tas != null) air.push(`${Math.round(a.tas)} kt TAS`);
-  if (a.ias != null) air.push(`${Math.round(a.ias)} IAS`);
-  if (a.mach != null) air.push(`M${a.mach.toFixed(2)}`);
-  if (air.length) rows.push(["Airspeed", air.join("  ·  ")]);
-  if (a.track != null) rows.push(["Track", `${Math.round(a.track)}°`]);
-  if (a.baroRate != null && !a.onGround) rows.push(["Vertical rate", `${a.baroRate > 0 ? "+" : ""}${Math.round(a.baroRate)} fpm`]);
-  const ap: string[] = [];
-  if (a.navModes?.length) ap.push(a.navModes.filter((m) => m !== "autopilot").map((m) => m.toUpperCase()).join("·") || "AP");
-  if (!a.onGround && (a.selAlt ?? a.fmsAlt) != null) ap.push(`tgt ${Math.round((a.selAlt ?? a.fmsAlt)!).toLocaleString()} ft`);
-  if (a.selHeading != null) ap.push(`hdg ${Math.round(a.selHeading)}°`);
-  if (a.navQNH != null) ap.push(`${(a.navQNH / 33.8639).toFixed(2)} inHg`);
-  if (ap.length) rows.push(["Autopilot", ap.join("  ·  ")]);
-  if (a.windSpd != null && a.windDir != null) {
-    rows.push(["Wind aloft", `${Math.round(a.windDir)}°/${Math.round(a.windSpd)} kt${a.oat != null ? `  ${a.oat > 0 ? "+" : ""}${Math.round(a.oat)}°` : ""}`]);
-  }
-  if (a.squawk) rows.push(["Squawk", a.squawk]);
-  const route = (a.originName || a.origin) && (a.destName || a.destination)
-    ? `${a.originName || a.origin} → ${a.destName || a.destination}` : null;
-  if (route) rows.push(["Route", route]);
-  if (d != null) rows.push(["From home", `${d.toFixed(1)} mi ${brg != null ? compass(brg) : ""}`]);
-  if (!a.onGround && a.altBaro != null && d != null && d > 0) {
-    const elev = (Math.atan2(a.altBaro * 0.3048, Math.max(1, d * 1609.34)) * 180) / Math.PI;
-    rows.push(["Look angle", `${Math.round(elev)}° up`]);
-  }
+  const elev = !onGround && a.altBaro != null && d != null && d > 0
+    ? Math.round((Math.atan2(a.altBaro * 0.3048, Math.max(1, d * 1609.34)) * 180) / Math.PI) : null;
+  const posLine = d != null ? `${d.toFixed(1)} mi ${brg != null ? compass(brg) : ""}${elev != null ? `  ·  ${elev}° up` : ""}` : "";
+
+  const stat = (label: string, val: string, unit: string, pre?: string, preCol?: string) => (
+    <div style={{ flex: 1, textAlign: "center" }}>
+      <div style={{ font: "600 10px system-ui", letterSpacing: 0.6, color: C.tertiary, textTransform: "uppercase" }}>{label}</div>
+      <div style={{ marginTop: 2, font: "600 15px system-ui", color: C.primary }}>
+        {pre && <span style={{ color: preCol, marginRight: 3, fontSize: 12 }}>{pre}</span>}
+        {val}{unit && <span style={{ font: "500 11px system-ui", color: C.secondary, marginLeft: 3 }}>{unit}</span>}
+      </div>
+    </div>
+  );
+  const vline = <div style={{ width: 1, height: 26, background: C.div, alignSelf: "center" }} />;
 
   return (
-    <div style={{ position: "absolute", top: 16, right: 16, width: 300, maxHeight: "82%", overflow: "hidden",
-      display: "flex", flexDirection: "column", borderRadius: 12, background: "rgba(8,12,18,0.82)",
-      border: "0.5px solid rgba(120,180,210,0.35)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)" }}>
-      {photo && <img src={photo} alt="" style={{ width: "100%", height: 150, objectFit: "cover", opacity: 0.92 }} />}
-      <div style={{ padding: "12px 14px", overflow: "auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-          <div>
-            <div style={{ font: "600 16px system-ui", color: "rgba(238,243,250,0.98)" }}>
-              {a.flight || a.registration || a.hex.toUpperCase()}
-            </div>
-            {a.airline && <div style={{ font: "12px system-ui", color: "rgba(150,200,220,0.9)", marginTop: 1 }}>{a.airline}</div>}
-            <div style={{ font: "12px system-ui", color: "rgba(196,205,219,0.8)", marginTop: 1 }}>
-              {[a.typeName || a.typeCode, a.registration].filter(Boolean).join("  ·  ")}
-            </div>
+    <div style={{ position: "absolute", top: 16, right: 16, width: 320, maxHeight: "86%", overflow: "hidden",
+      display: "flex", flexDirection: "column", borderRadius: 16, background: "rgba(15,18,24,0.82)",
+      border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 8px 32px rgba(0,0,0,0.45)",
+      backdropFilter: "blur(16px) saturate(115%)", WebkitBackdropFilter: "blur(16px) saturate(115%)",
+      fontVariantNumeric: "tabular-nums" }}>
+      <div style={{ position: "relative", height: 132, flex: "none", background: photo ? undefined : "linear-gradient(160deg,#1E2530,#141821)" }}>
+        {photo && <img src={photo} alt="" style={{ width: "100%", height: 132, objectFit: "cover", display: "block" }} />}
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(15,18,24,0.95) 0%, rgba(15,18,24,0) 55%)" }} />
+        <button onClick={onClose} aria-label="Close" style={{ position: "absolute", top: 8, right: 8, border: 0,
+          background: "rgba(0,0,0,0.4)", color: "rgba(225,232,240,0.9)", width: 26, height: 26, borderRadius: "50%", cursor: "pointer", font: "14px system-ui" }}>✕</button>
+      </div>
+      <div style={{ overflow: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", padding: "0 16px 14px", marginTop: -44 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ font: "700 28px system-ui", letterSpacing: -0.2, color: C.primary, lineHeight: 1 }}>{callsign}</div>
+            {a.airline && <div style={{ font: "500 14px system-ui", color: C.secondary, marginTop: 3 }}>{a.airline}</div>}
+            {(a.typeName || a.typeCode) && <div style={{ font: "500 12px system-ui", color: C.tertiary, marginTop: 2 }}>{a.typeName || a.typeCode}</div>}
           </div>
-          <button onClick={onClose} aria-label="Close" style={{ border: 0, background: "rgba(255,255,255,0.08)",
-            color: "rgba(225,232,240,0.9)", width: 26, height: 26, borderRadius: "50%", cursor: "pointer", font: "14px system-ui", flex: "none" }}>✕</button>
+          {a.typeCode && <div style={{ font: "600 11px system-ui", letterSpacing: 0.3, color: C.secondary, background: C.accentDim,
+            padding: "3px 8px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.06)", flex: "none" }}>{a.typeCode}</div>}
         </div>
-        <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "auto 1fr", rowGap: 6, columnGap: 12 }}>
-          {rows.map(([k, v]) => (
-            <div key={k} style={{ display: "contents" }}>
-              <div style={{ font: "11px system-ui", color: "rgba(140,152,168,0.85)", whiteSpace: "nowrap" }}>{k}</div>
-              <div style={{ font: "12px ui-monospace, monospace", color: "rgba(222,232,244,0.92)", textAlign: "right" }}>{v}</div>
+        <div style={{ height: 1, background: C.div }} />
+        <div style={{ padding: "14px 16px", minHeight: 30 }}>
+          {ends ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ font: "700 18px system-ui", letterSpacing: 0.2, color: C.primary, lineHeight: 1.05 }}>{ends.from.code || "—"}</div>
+                {ends.from.city && <div style={{ font: "500 11px system-ui", color: C.secondary, marginTop: 2, maxWidth: 108, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ends.from.city}</div>}
+              </div>
+              <div style={{ flex: 1, display: "flex", alignItems: "center", margin: "0 4px" }}>
+                <div style={{ flex: 1, height: 1, background: "rgba(91,184,255,0.45)" }} />
+                <span style={{ color: C.accent, font: "600 15px system-ui", marginLeft: 1 }}>→</span>
+              </div>
+              <div style={{ minWidth: 0, textAlign: "right" }}>
+                <div style={{ font: "700 18px system-ui", letterSpacing: 0.2, color: C.primary, lineHeight: 1.05 }}>{ends.to.code || "—"}</div>
+                {ends.to.city && <div style={{ font: "500 11px system-ui", color: C.secondary, marginTop: 2, maxWidth: 108, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginLeft: "auto" }}>{ends.to.city}</div>}
+              </div>
             </div>
-          ))}
+          ) : (
+            <div style={{ font: "500 13px system-ui", color: C.tertiary }}>◇ Route unknown</div>
+          )}
+        </div>
+        <div style={{ height: 1, background: C.div }} />
+        <div style={{ padding: "12px 16px" }}>
+          <div style={{ display: "flex" }}>
+            {stat("Alt", altVal, onGround || a.altBaro == null ? "" : "ft")}
+            {vline}
+            {stat("Spd", spdVal, a.gs != null ? "kt" : "")}
+            {vline}
+            {stat("V/S", vsVal, level ? "" : "fpm", vsArrow, level ? C.tertiary : vr! > 0 ? C.up : C.down)}
+          </div>
+          {apTgt && (
+            <div style={{ marginTop: 10 }}>
+              <span style={{ display: "inline-block", font: "500 11px system-ui", color: C.secondary, background: C.accentDim, padding: "4px 8px", borderRadius: 6 }}>
+                ⌖ SEL <span style={{ color: C.primary }}>{apTgt} ft</span>
+              </span>
+            </div>
+          )}
+        </div>
+        <div style={{ height: 1, background: C.div }} />
+        <div style={{ padding: "10px 16px 12px" }}>
+          <div style={{ font: "500 10.5px system-ui", letterSpacing: 0.2, color: C.tertiary, lineHeight: 1.4 }}>{foot}</div>
+          {posLine && <div style={{ font: "500 10.5px system-ui", color: C.tertiary, marginTop: 4 }}>{posLine}</div>}
         </div>
       </div>
     </div>
   );
+}
+
+// Origin → destination, with a GEOMETRY leg-correction: route DBs give one canonical direction
+// per callsign, often the wrong leg. The true destination is the endpoint the aircraft is heading
+// TOWARD (its track points at it), so swap when the labelled origin is actually ahead.
+function routeEnds(a: Aircraft): { from: { code?: string; city?: string }; to: { code?: string; city?: string } } | null {
+  if (!a.origin && !a.destination) return null;
+  let from = { code: a.origin, city: a.originName }, to = { code: a.destination, city: a.destName };
+  if (a.track != null && a.lat != null && a.lon != null &&
+      a.originLat != null && a.originLon != null && a.destLat != null && a.destLon != null) {
+    const aO = angDiff(a.track, bearing(a.lat, a.lon, a.originLat, a.originLon));
+    const aD = angDiff(a.track, bearing(a.lat, a.lon, a.destLat, a.destLon));
+    if (aO < aD - 25) { from = { code: a.destination, city: a.destName }; to = { code: a.origin, city: a.originName }; }
+  }
+  return { from, to };
+}
+function angDiff(x: number, y: number): number {
+  return Math.abs(((x - y + 540) % 360) - 180);
 }
 
 function haversine(la1: number, lo1: number, la2?: number, lo2?: number): number | null {
