@@ -78,11 +78,14 @@ export class SpotlightLayer implements Layer {
     if (!f.cfg.showSpotlight && this.golden < 0.15) return;
     const now = f.t * 1000;
 
-    // Nearest within radius.
+    // Nearest within radius. Hot loop over every aircraft each frame, so use a cheap flat
+    // (equirectangular) distance — exact enough under ~15 mi; haversine stays for the readout.
+    const cosS = Math.cos(sLat * Math.PI / 180);
     let best: Visible | null = null;
     let bestD = Infinity;
     for (const a of f.aircraft) {
-      const d = distMiles(sLat, sLon, a.lat, a.lon);
+      const dy = (a.lat - sLat) * 69, dx = (a.lon - sLon) * 69 * cosS;
+      const d = Math.sqrt(dx * dx + dy * dy);
       if (d <= radius && d < bestD) { bestD = d; best = a; }
     }
 

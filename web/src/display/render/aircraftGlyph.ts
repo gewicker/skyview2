@@ -87,6 +87,42 @@ const JET_QUAD: JetParams = { nose: -1.24, tail: 1.16, halfW: 0.13, wingY: -0.04
 const JET_TPROP: JetParams = { nose: -1.0, tail: 0.98, halfW: 0.11, wingY: -0.06, wingSpan: 1.04, wingSweep: 0.1, rootChord: 0.3, tipChord: 0.17, stabY: 0.78, stabSpan: 0.44, stabSweep: 0.05, stabChord: 0.14 };
 const JET_BIZJET: JetParams = { nose: -1.0, tail: 0.96, halfW: 0.085, wingY: 0.12, wingSpan: 0.8, wingSweep: 0.28, rootChord: 0.2, tipChord: 0.07, stabY: 0.8, stabSpan: 0.48, stabSweep: 0.08, stabChord: 0.1 };
 
+// ── Light anchors ───────────────────────────────────────────────────────────────
+// Where each external light physically sits on the airframe, per kind, in s-units
+// (nose −y, starboard +x). Derived from the planform for jets so the red/green ride the
+// TRUE swept wingtips (and track the planform as the aircraft banks); explicit for the
+// hand-built light/fighter/helicopter bodies.
+export interface LightAnchors {
+  wingX: number;   // |x| of the wingtip nav light + strobe (port −, starboard +)
+  wingY: number;   // y of the wingtip lights (rides the swept tip)
+  tailY: number;   // y of the white tail/nav light (tail cone)
+  noseY: number;   // y of the nose tip (landing-light origin)
+  beaconY: number; // y of the red anti-collision beacon
+}
+function jetAnchors(p: JetParams): LightAnchors {
+  return {
+    wingX: p.wingSpan * 0.99,                    // at the tip, just inside the rounded cap
+    wingY: p.wingY + p.wingSweep * 0.92 + 0.02,  // ride the swept tip, a hair aft
+    tailY: p.tail - 0.04,                        // on the tail cone, not mid-fuselage
+    noseY: p.nose + 0.02,                        // nose tip
+    beaconY: 0,                                  // fuselage centre
+  };
+}
+const ANCHORS: Record<GlyphKind, LightAnchors> = {
+  airliner: jetAnchors(JET_AIRLINER),
+  widebody: jetAnchors(JET_WIDE),
+  quadjet: jetAnchors(JET_QUAD),
+  turboprop: jetAnchors(JET_TPROP),
+  bizjet: jetAnchors(JET_BIZJET),
+  light: { wingX: 1.02, wingY: -0.34, tailY: 0.9, noseY: -0.92, beaconY: 0.1 },
+  fighter: { wingX: 0.92, wingY: 0.54, tailY: 0.98, noseY: -1.13, beaconY: 0.3 },
+  helicopter: { wingX: 0.3, wingY: -0.15, tailY: 1.18, noseY: -0.6, beaconY: -0.4 },
+};
+/** External-light mount points for a glyph kind (in s-units, rotated glyph frame). */
+export function lightAnchors(kind: GlyphKind): LightAnchors {
+  return ANCHORS[kind];
+}
+
 // The static silhouette (everything except spinning props/rotors). This is what gets
 // cached into a sprite — see glyphCache.ts.
 export function drawGlyphStatic(ctx: CanvasRenderingContext2D, kind: GlyphKind, s: number, color: RGB, alpha: number): void {
@@ -96,12 +132,12 @@ export function drawGlyphStatic(ctx: CanvasRenderingContext2D, kind: GlyphKind, 
     case "widebody":
       jetSilhouette(ctx, s, JET_WIDE, fill);
       engines(ctx, s, fill, JET_WIDE.wingY + 0.3, [0.46]);
-      core(ctx, s, alpha, 0.1);
+      core(ctx, s, alpha, 0.07);
       break;
     case "quadjet":
       jetSilhouette(ctx, s, JET_QUAD, fill);
       engines(ctx, s, fill, JET_QUAD.wingY + 0.32, [0.34, 0.62]);
-      core(ctx, s, alpha, 0.1);
+      core(ctx, s, alpha, 0.07);
       break;
     case "turboprop":
       jetSilhouette(ctx, s, JET_TPROP, fill);
@@ -136,7 +172,7 @@ export function drawGlyphStatic(ctx: CanvasRenderingContext2D, kind: GlyphKind, 
     default:
       jetSilhouette(ctx, s, JET_AIRLINER, fill);
       engines(ctx, s, fill, JET_AIRLINER.wingY + 0.28, [0.4]);
-      core(ctx, s, alpha, 0.1);
+      core(ctx, s, alpha, 0.07);
       break;
   }
 }
@@ -323,7 +359,7 @@ function mainRotor(ctx: CanvasRenderingContext2D, s: number, color: RGB, alpha: 
 
 function core(ctx: CanvasRenderingContext2D, s: number, alpha: number, r: number): void {
   ctx.shadowBlur = 0;
-  ctx.fillStyle = col([255, 255, 255], 0.75 * alpha);
+  ctx.fillStyle = col([255, 255, 255], 0.6 * alpha); // dimmer: let the nav lights own the bright points
   ctx.beginPath();
   ctx.arc(0, 0, s * r, 0, Math.PI * 2);
   ctx.fill();

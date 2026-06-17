@@ -14,6 +14,7 @@ export class LeaderLayer implements Layer {
   readonly name = "leaders";
 
   draw(f: FrameContext): void {
+    if (f.cfg.showTraffic === false) return; // master traffic toggle
     if (!f.cfg.showRelative || f.interacting) return;
     const ctx = f.ctx;
     const flat = hexRGB(f.cfg.palette.glyph || "#ff9a3c");

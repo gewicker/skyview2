@@ -6,7 +6,8 @@ import { Camera } from "./mercator";
 import type { MapStyle } from "@shared/types";
 
 const SUB = "abcd";
-const CAP = 700; // higher cap = less reload churn when panning back over old ground
+const CAP = 256; // bounded for the Pi: a 1280×800 kiosk holds far fewer at once; 700 let
+                 // decoded @2x tiles pile up across style switches / long pans (~1 MB each)
 const DEG = Math.PI / 180;
 const cache = new Map<string, HTMLImageElement>();
 let loads = 0;

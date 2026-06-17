@@ -83,9 +83,16 @@ func main() {
 		return msg.SourceStatus{OK: true, Source: "radio", Count: len(ac)}
 	}
 
-	srv := &http.Server{Addr: *addr, Handler: httpd.New(httpd.Deps{
-		Hub: h, Cfg: cfg, Scenes: scenes, Notable: notable, Snapshot: snapshot, Status: status,
-	})}
+	srv := &http.Server{
+		Addr: *addr,
+		Handler: httpd.New(httpd.Deps{
+			Hub: h, Cfg: cfg, Scenes: scenes, Notable: notable, Snapshot: snapshot, Status: status,
+		}),
+		// Hardening. No blanket WriteTimeout — it would kill the long-lived /ws connection;
+		// per-write deadlines live in the hub instead.
+		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

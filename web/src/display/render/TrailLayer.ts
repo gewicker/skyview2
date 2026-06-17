@@ -18,6 +18,7 @@ export class TrailLayer implements Layer {
   readonly name = "trails";
 
   draw(f: FrameContext): void {
+    if (f.cfg.showTraffic === false) return; // master traffic toggle
     if (f.interacting) return; // low-detail during a gesture (trails are the costliest layer)
     const ctx = f.ctx;
     const mode = f.cfg.trailMode;
@@ -25,8 +26,10 @@ export class TrailLayer implements Layer {
     const flat = hexRGB(f.cfg.palette.trail || "#cfd8e3");
     const home = f.cam.project(f.cfg.centerLat, f.cfg.centerLon);
 
-    const list = [...f.aircraft];
+    // Only clone+sort when we must cap; under the cap, iterate the live array (no per-frame alloc).
+    let list = f.aircraft;
     if (list.length > MAX_TRAILS) {
+      list = [...f.aircraft];
       list.sort((a, b) => d2(f, a, home) - d2(f, b, home));
       list.length = MAX_TRAILS;
     }

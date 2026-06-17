@@ -1,38 +1,59 @@
-// Shared colour ramps for aircraft + trails. A rich multi-stop altitude ramp so the
-// variation reads clearly across the whole band: low = warm orange, mid = green/cyan,
-// high = blue/violet. (Ported from v1's ALT_STOPS.)
+// Shared colour ramps for aircraft + trails. Altitude reads as an EARTH→SKY gradient:
+// traffic hugging the ground is warm and earthy, traffic up high is light and vibrant.
+// The mapping is intuitive — low = grounded/warm, high = airy/bright — and the stops are
+// tuned (with a design review) for a monotonic perceived-luminance rise, maximum spread in
+// the busy 0–12k band, and legibility on dark AND bright/satellite backgrounds. Exact
+// altitude is still printed in the label.
 export type RGB = [number, number, number];
 
-// Three distinct bands with sharp flips at 10k and 20k:
-//   0–10k  = ground/yellow (orange → amber → bright yellow)
-//   10–20k = blue hues
-//   20k+   = striking violet → magenta → pink
+// Smooth earth→sky ramp (no hard band flips). Spacing is denser low (most traffic) and the
+// mid blues are lifted/slightly desaturated so altitude order survives on dark backgrounds
+// and for red-green colour-vision deficiency (where lightness, not hue, carries the order).
 const ALT_STOPS: [number, RGB][] = [
-  [0, [255, 140, 30]],      // surface — orange
-  [5000, [255, 205, 60]],   // amber/yellow
-  [9500, [255, 240, 120]],  // bright yellow — top of the low band
-  [10000, [80, 165, 255]],  // 10k: sharp flip to blue
-  [15000, [56, 112, 240]],  // mid blue
-  [20000, [40, 72, 225]],   // deep blue — top of the mid band
-  [20500, [190, 70, 255]],  // 20k: sharp flip to violet
-  [30000, [255, 70, 210]],  // hot magenta
-  [40000, [255, 150, 245]], // very high — bright pink
+  [0, [176, 107, 67]],      // surface — earthy terracotta / clay
+  [2500, [206, 138, 71]],   // burnt ochre
+  [5000, [232, 176, 82]],   // amber gold
+  [8000, [238, 210, 110]],  // golden wheat — top of the warm band
+  [11000, [190, 214, 120]], // sage — earth gives way to sky
+  [15000, [126, 205, 150]], // meadow green
+  [20000, [86, 196, 205]],  // teal
+  [27000, [96, 198, 248]],  // sky blue
+  [35000, [140, 218, 255]], // bright azure
+  [44000, [190, 236, 255]], // very high — airy ice-blue
 ];
 
 export function altRamp(alt: number): RGB {
-  if (alt <= ALT_STOPS[0][0]) return ALT_STOPS[0][1];
+  const a = alt < 0 ? 0 : alt > 44000 ? 44000 : alt; // clamp to the ramp domain
+  if (a <= ALT_STOPS[0][0]) return ALT_STOPS[0][1];
   for (let i = 1; i < ALT_STOPS.length; i++) {
-    if (alt <= ALT_STOPS[i][0]) {
+    if (a <= ALT_STOPS[i][0]) {
       const [a0, c0] = ALT_STOPS[i - 1];
       const [a1, c1] = ALT_STOPS[i];
-      return lerp(c0, c1, (alt - a0) / (a1 - a0));
+      return mixSrgb(c0, c1, (a - a0) / (a1 - a0));
     }
   }
   return ALT_STOPS[ALT_STOPS.length - 1][1];
 }
 
+// Plain (linear, per-channel) lerp — used by the trail climb/descent colouring.
 export function lerp(a: RGB, b: RGB, t: number): RGB {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+}
+
+// Gamma-correct colour mix: interpolate in LINEAR light, not 8-bit sRGB, so transitions
+// (warm→green, teal→blue) don't darken/mud through the midpoint. Used by the altitude ramp.
+function srgbToLin(c: number): number {
+  const s = c / 255;
+  return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+}
+function linToSrgb(l: number): number {
+  const s = l <= 0.0031308 ? l * 12.92 : 1.055 * Math.pow(l, 1 / 2.4) - 0.055;
+  const v = Math.round(s * 255);
+  return v < 0 ? 0 : v > 255 ? 255 : v;
+}
+function mixSrgb(a: RGB, b: RGB, t: number): RGB {
+  const mix = (x: number, y: number) => linToSrgb(srgbToLin(x) + (srgbToLin(y) - srgbToLin(x)) * t);
+  return [mix(a[0], b[0]), mix(a[1], b[1]), mix(a[2], b[2])];
 }
 
 export function hexRGB(hex: string): RGB {

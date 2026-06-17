@@ -5,7 +5,7 @@
 // rather than a clutter of bright glyphs + labels.
 import type { Layer, FrameContext, Visible } from "./types";
 import type { Config } from "@shared/types";
-import { classifyGlyph, GLYPH_SCALE, drawGlyphSpinners, hasSpinners } from "./aircraftGlyph";
+import { classifyGlyph, GLYPH_SCALE, drawGlyphSpinners, hasSpinners, lightAnchors, type LightAnchors } from "./aircraftGlyph";
 import { getGlyphSprite } from "./glyphCache";
 import { altRamp, hexRGB, type RGB } from "./colors";
 import { AIRPORTS } from "./airports";
@@ -60,9 +60,11 @@ function nearestLocalField(a: Visible, maxMi: number): string | null {
 
 // Low + clearly descending + close to a local field ⇒ physically landing there.
 function arrivingLocal(a: Visible): string | null {
-  if (a.onGround || a.altBaro == null || a.altBaro > 5000) return null;
-  if (a.baroRate == null || a.baroRate > -200) return null; // must be clearly descending
-  return nearestLocalField(a, 7);
+  if (a.onGround || a.altBaro == null || a.altBaro > 5500) return null;
+  // Reject only if we KNOW it's not descending; a null vertical rate (common on the feed) no
+  // longer suppresses the approach tag/landing light for a low aircraft near a field.
+  if (a.baroRate != null && a.baroRate > -150) return null;
+  return nearestLocalField(a, 8);
 }
 
 // Low + clearly climbing + close to a local field ⇒ just departed there. Used only to
@@ -73,6 +75,26 @@ function departingLocal(a: Visible): string | null {
   if (a.baroRate == null || a.baroRate < 200) return null; // must be clearly climbing
   return nearestLocalField(a, 6);
 }
+
+// Bearing (0 = N, 90 = E, matching the ADS-B `track` convention) from the aircraft's recent
+// motion trail — the direction it's ACTUALLY moving. Used to point ground chevrons, where the
+// reported track is frequently null or stale. Walks back over the last few trail points until
+// it finds enough displacement to define a heading; returns null if there isn't any.
+function motionHeading(a: Visible): number | null {
+  const tr = a.trail;
+  if (!tr || tr.length < 2) return null;
+  const p1 = tr[tr.length - 1];
+  // Walk back over the last few points to the first that is clearly beyond GPS noise (~10 m).
+  // A lower gate would let jitter set the heading, spinning the chevron frame-to-frame.
+  for (let i = tr.length - 2; i >= 0 && i >= tr.length - 6; i--) {
+    const p0 = tr[i];
+    const north = p1.lat - p0.lat;
+    const east = (p1.lon - p0.lon) * Math.cos(p1.lat * DEG);
+    if (Math.hypot(north, east) * 111320 >= 10) return (Math.atan2(east, north) * 180) / Math.PI;
+  }
+  return null; // not enough real motion — leave the heading to the caller (reported track)
+}
+
 
 export class AircraftLayer implements Layer {
   readonly name = "aircraft";
@@ -86,20 +108,25 @@ export class AircraftLayer implements Layer {
       this.sunAt = wall;
       this.nf = nightFactor(sunAltitude(f.cfg.centerLat, f.cfg.centerLon, new Date(wall + (f.cfg.skyTimeOffsetMin || 0) * 60000)));
     }
-    // Airborne aircraft read larger (0.75×) so they stand out on a small panel; ground
-    // traffic is drawn as crisp little chevrons/dots (see drawGroundMarker) so a busy
-    // ramp reads as distinct aircraft instead of one orange blob.
-    const base = (f.cfg.glyphSizePx ?? 18) * 0.75;
+    // Airborne aircraft read at the configured size; ground traffic is drawn as crisp little
+    // chevrons/dots (see drawGroundMarker) so a busy ramp reads as distinct aircraft.
+    // ZOOM COUPLING: glyphs are a fixed pixel size, so when you zoom in on a single aircraft
+    // it stays tiny and reads as a featureless dot. Grow them with the map zoom — bounded and
+    // quantised (so the sprite cache doesn't churn) — so a zoomed-in plane becomes a detailed
+    // silhouette while a zoomed-out busy sky stays compact.
+    const base = (f.cfg.glyphSizePx ?? 18) * 0.85;
+    const zk = Math.min(2.6, Math.max(1, Math.pow((f.view.mapZoom || 1) / 2.2, 0.5)));
+    const zq = Math.round(zk * 4) / 4;
     ctx.save();
     ctx.font = "600 12px system-ui, sans-serif";
     ctx.textBaseline = "middle";
 
     const jobs: LabelJob[] = [];
-    for (const a of f.aircraft) {
+    for (const a of f.cfg.showTraffic === false ? [] : f.aircraft) {
       const ground = !!a.onGround;
       const p = f.cam.project(a.lat, a.lon);
       const kind = classifyGlyph(a);
-      const full = base * GLYPH_SCALE[kind];
+      const full = base * GLYPH_SCALE[kind] * zq;
       const glyphS = ground ? full * 0.5 : full;       // small footprint on the ground
       const glowS = ground ? full * 0.85 : full;        // glow stays sized so clusters merge
       const rgb: RGB = !f.cfg.altitudeColor
@@ -115,7 +142,15 @@ export class AircraftLayer implements Layer {
 
       ctx.save();
       ctx.translate(p.x, p.y);
-      ctx.rotate(((a.track ?? 0) + (f.cfg.mapRotationDeg ?? 0)) * DEG);
+      // Heading the glyph points: airborne uses the reported track (reliable from ADS-B
+      // velocity); on the GROUND the reported track is often null/stale, so the chevron is
+      // pointed along the ACTUAL recent direction of travel derived from the motion trail.
+      let headingDeg = a.track ?? 0;
+      if (ground) {
+        const mh = motionHeading(a);
+        if (mh != null) headingDeg = mh;
+      }
+      ctx.rotate((headingDeg + (f.cfg.mapRotationDeg ?? 0)) * DEG);
       if (ground) {
         if (morphing && a.transitGround === true) {
           this.airborne(f, kind, rgb, glyphS, glowS, 1 - tp, seedFor(a.hex), 1 + 0.25 * (1 - tp));
@@ -136,22 +171,31 @@ export class AircraftLayer implements Layer {
       // beam that brightens as it nears the predicted touchdown (day + night, brighter at night).
       if (!ground && arrivingLocal(a)) {
         const altF = a.altBaro ?? 3000;
-        const close = Math.max(0.25, Math.min(1, 1 - (altF - 200) / 2800)); // brighter lower/closer
-        const flick = 0.88 + 0.12 * Math.sin(f.t * 22 + seedFor(a.hex));
-        const amp = close * flick * (0.45 + 0.55 * this.nf);
+        const close = Math.max(0.3, Math.min(1, 1 - (altF - 200) / 2800)); // brighter lower/closer
+        const flick = 0.9 + 0.1 * Math.sin(f.t * 26 + seedFor(a.hex));
+        const shimmer = 1 + 0.06 * Math.sin(f.t * 40 + seedFor(a.hex) * 7); // faint HID-through-haze scintillation
+        const amp = close * flick * shimmer * (0.75 + 0.25 * this.nf); // strong by day, fuller at night
         ctx.globalCompositeOperation = "lighter";
-        const ny = -glyphS * 0.45, reach = glyphS * (2.2 + 1.6 * close);
+        const ny = lightAnchors(kind).noseY * glyphS; // beam leaves the true nose tip
+        const reach = glyphS * (3.2 + 3.0 * close);   // longer throw as it nears touchdown
+        const halfW = glyphS * (0.28 + 0.45 * close); // tight at the nose, blooming on short final
+        const throat = glyphS * 0.12;                 // the beam has width at its source
+        // Warm forward beam: a real beam with a throat, fanning out and reaching further low.
         const g = ctx.createLinearGradient(0, ny, 0, ny - reach);
-        g.addColorStop(0, `rgba(255,250,214,${(0.55 * amp).toFixed(3)})`);
-        g.addColorStop(1, "rgba(255,250,214,0)");
+        g.addColorStop(0, `rgba(255,249,206,${(0.9 * amp).toFixed(3)})`);
+        g.addColorStop(0.5, `rgba(255,248,210,${(0.30 * amp).toFixed(3)})`);
+        g.addColorStop(1, "rgba(255,248,210,0)");
         ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.moveTo(0, ny);
-        ctx.lineTo(-glyphS * 0.7, ny - reach);
-        ctx.lineTo(glyphS * 0.7, ny - reach);
+        ctx.moveTo(-throat, ny);
+        ctx.lineTo(-halfW, ny - reach);
+        ctx.lineTo(halfW, ny - reach);
+        ctx.lineTo(throat, ny);
         ctx.closePath();
         ctx.fill();
-        lamp(ctx, 0, ny, 1.6 + close, `rgba(255,252,226,${(0.9 * amp).toFixed(3)})`);
+        // Bright lamp at the nose + a hot white core, so the source reads as a sharp point.
+        lamp(ctx, 0, ny, 2.4 + close * 1.8, `rgba(255,251,224,${(0.95 * amp).toFixed(3)})`);
+        lamp(ctx, 0, ny, 1.0 + close * 0.7, `rgba(255,255,255,${(0.95 * amp).toFixed(3)})`);
         ctx.globalCompositeOperation = "source-over";
       }
       // Speed-reactive streak during a takeoff/landing event — a bright tapered bloom behind
@@ -195,7 +239,7 @@ export class AircraftLayer implements Layer {
 
     // Takeoff/landing flourish: a one-time cue anchored at the event location (which the
     // glyph has since flown on from). Only active for ~FLOURISH_MS after the event.
-    for (const a of f.aircraft) {
+    for (const a of f.cfg.showTraffic === false ? [] : f.aircraft) {
       const age = a.transitAge;
       if (age == null || age < 0 || age >= FLOURISH_MS || a.transitLat == null || a.transitLon == null) continue;
       const q = f.cam.project(a.transitLat, a.transitLon);
@@ -247,18 +291,20 @@ export class AircraftLayer implements Layer {
       // each aircraft reads as a crisp luminous point instead of a soft blob.
       ctx.globalCompositeOperation = "lighter";
       const r0 = rgb[0] | 0, r1 = rgb[1] | 0, r2 = rgb[2] | 0;
-      ctx.fillStyle = `rgba(${r0},${r1},${r2},0.05)`;
-      ctx.beginPath(); ctx.arc(0, 0, glowS * 2.1, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = `rgba(${r0},${r1},${r2},0.10)`;
-      ctx.beginPath(); ctx.arc(0, 0, glowS * 1.0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = `rgba(${Math.min(255, r0 + 45)},${Math.min(255, r1 + 45)},${Math.min(255, r2 + 45)},0.30)`;
-      ctx.beginPath(); ctx.arc(0, 0, glowS * 0.42, 0, Math.PI * 2); ctx.fill();
+      // Soft luminous presence only — must NOT whiten/wash the (earthy) fill or drown the nav
+      // lights. Keep the core in the fill HUE (small +15 lift, low alpha), not a white-hot dot.
+      ctx.fillStyle = `rgba(${r0},${r1},${r2},0.045)`;
+      ctx.beginPath(); ctx.arc(0, 0, glowS * 1.9, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `rgba(${r0},${r1},${r2},0.08)`;
+      ctx.beginPath(); ctx.arc(0, 0, glowS * 0.95, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `rgba(${Math.min(255, r0 + 15)},${Math.min(255, r1 + 15)},${Math.min(255, r2 + 15)},0.15)`;
+      ctx.beginPath(); ctx.arc(0, 0, glowS * 0.45, 0, Math.PI * 2); ctx.fill();
       ctx.globalCompositeOperation = "source-over";
     }
     const sprite = getGlyphSprite(kind, rgb, 1, glyphS, f.dpr);
     ctx.drawImage(sprite.canvas, -sprite.half, -sprite.half, sprite.half * 2, sprite.half * 2);
     if (hasSpinners(kind)) drawGlyphSpinners(ctx, kind, glyphS, rgb, 1, f.t, seed);
-    drawNavLights(ctx, glyphS, seed, f.t, this.nf);
+    drawNavLights(ctx, glyphS, lightAnchors(kind), seed, f.t, this.nf);
     ctx.restore();
   }
 }
@@ -451,30 +497,43 @@ function lamp(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, c:
   ctx.fill();
 }
 
-// Nav lights on an airborne aircraft, in its rotated frame (nose = −y): steady red (port) +
-// green (starboard) + white (tail) position lights, a slow red beacon pulse, and bright white
-// anti-collision STROBES that double-flash ~1 Hz — seeded per aircraft so the sky twinkles out
-// of sync. `nf` is the time-of-day night factor (0 day → 1 night): position/beacon fade in at
-// dusk like the real lights; strobes keep a little daytime visibility.
-function drawNavLights(ctx: CanvasRenderingContext2D, glyphS: number, seed: number, t: number, nf: number): void {
-  const w = glyphS * 0.6;
-  if (nf > 0.04) {
-    lamp(ctx, -w, glyphS * 0.05, 1.3, `rgba(255,70,58,${(0.9 * nf).toFixed(3)})`);  // port (red)
-    lamp(ctx, w, glyphS * 0.05, 1.3, `rgba(70,255,110,${(0.9 * nf).toFixed(3)})`);  // starboard (green)
-    lamp(ctx, 0, glyphS * 0.55, 1.1, `rgba(240,248,255,${(0.8 * nf).toFixed(3)})`); // tail (white)
-    ctx.globalCompositeOperation = "lighter";
-    const beat = Math.max(0, Math.sin((t * 1.3 + seed) * Math.PI * 2));
-    lamp(ctx, 0, glyphS * 0.1, 1.4 + beat * 1.6, `rgba(255,55,45,${(0.35 * beat * nf).toFixed(3)})`); // beacon
-    ctx.globalCompositeOperation = "source-over";
+// External lights on an airborne aircraft, MOUNTED on the real airframe via per-kind anchors
+// (`a`): red (port) + green (starboard) ride the true swept wingtips, white sits on the tail
+// cone, a red anti-collision beacon SWEEPS like a rotating lens, and white xenon STROBES
+// double-flash off the wingtips. Seeded per aircraft so the sky twinkles out of sync. `nf` is
+// the night factor (0 day → 1 night); colours run day+night and bloom brighter after dusk.
+function drawNavLights(ctx: CanvasRenderingContext2D, glyphS: number, a: LightAnchors, seed: number, t: number, nf: number): void {
+  const lvl = 0.5 + 0.5 * nf;
+  const wx = a.wingX * glyphS, wy = a.wingY * glyphS;
+  // Light dot radii SCALE with the glyph (was a constant 1.3px that vanished at small size and
+  // never grew when zoomed in). lr ≈ a wingtip-lens size proportional to the airframe.
+  const lr = Math.max(1.1, glyphS * 0.12);
+  // Position lights (steady). Warm-red port / cool-green starboard read as a temperature pair
+  // even at 1px; warm-white tail. Drawn over the map (source-over).
+  lamp(ctx, -wx, wy, lr, `rgba(255,42,38,${(0.95 * lvl).toFixed(3)})`);             // port (red)
+  lamp(ctx, wx, wy, lr, `rgba(40,235,90,${(0.95 * lvl).toFixed(3)})`);              // starboard (green)
+  lamp(ctx, 0, a.tailY * glyphS, lr * 0.85, `rgba(255,247,235,${(0.85 * lvl).toFixed(3)})`); // tail (warm white)
+  ctx.globalCompositeOperation = "lighter";
+  // Red beacon: a rotating lens crossing the line of sight — fast rise, slow fall, dark half.
+  const bp = (t * 0.85 + seed) % 1;
+  const b = bp < 0.55 ? Math.pow(Math.max(0, Math.sin(bp * Math.PI * 2)), 3) : 0;
+  if (b > 0.002) lamp(ctx, 0, a.beaconY * glyphS, lr * 0.95 + b * lr * 1.1, `rgba(255,40,32,${(0.34 * b * lvl).toFixed(3)})`);
+  // White wingtip strobes: real double-flash (~1.1 s), with a hot capacitor-dump overshoot on
+  // the leading frame of each flash and a faint xenon-blue ring, then snap to baseline.
+  const ph = (t * 0.9 + seed) % 1;
+  if (ph < 0.04 || (ph > 0.1 && ph < 0.14)) {
+    const lead = ph < 0.012 || (ph > 0.1 && ph < 0.112);
+    const sbase = Math.max(2.0, glyphS * 0.2);
+    const sr = lead ? sbase * 1.25 : sbase;
+    const sa = (lead ? 0.95 : 0.3 + 0.65 * nf).toFixed(3);
+    lamp(ctx, -wx, wy, sr, `rgba(255,255,255,${sa})`);
+    lamp(ctx, wx, wy, sr, `rgba(255,255,255,${sa})`);
+    if (lead) {
+      lamp(ctx, -wx, wy, sbase * 1.7, "rgba(200,225,255,0.5)");
+      lamp(ctx, wx, wy, sbase * 1.7, "rgba(200,225,255,0.5)");
+    }
   }
-  const ph = (t * 0.8 + seed) % 1;
-  if (ph < 0.045 || (ph > 0.1 && ph < 0.14)) { // white strobe double-flash (a bit visible by day too)
-    ctx.globalCompositeOperation = "lighter";
-    const sa = (0.3 + 0.65 * nf).toFixed(3);
-    lamp(ctx, -w, glyphS * 0.05, 2.6, `rgba(255,255,255,${sa})`);
-    lamp(ctx, w, glyphS * 0.05, 2.6, `rgba(255,255,255,${sa})`);
-    ctx.globalCompositeOperation = "source-over";
-  }
+  ctx.globalCompositeOperation = "source-over";
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {

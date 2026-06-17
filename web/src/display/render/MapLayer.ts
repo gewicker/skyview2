@@ -30,8 +30,8 @@ export class MapLayer implements Layer {
   draw(f: FrameContext): void {
     const cfg = f.cfg;
     const now = performance.now();
-    const key = [f.view.mapCenterLat, f.view.mapCenterLon, f.view.mapZoom, cfg.mapRotationDeg, cfg.mapStyle, f.w, f.h, f.dpr].join("|");
-    const fixed = [cfg.mapStyle, cfg.mapRotationDeg, f.w, f.h, f.dpr].join("|");
+    const key = [f.view.mapCenterLat, f.view.mapCenterLon, f.view.mapZoom, cfg.mapRotationDeg, cfg.mapStyle, cfg.rangeRings, cfg.gridOverlay, f.w, f.h, f.dpr].join("|");
+    const fixed = [cfg.mapStyle, cfg.mapRotationDeg, cfg.rangeRings, cfg.gridOverlay, f.w, f.h, f.dpr].join("|");
 
     const forced = !this.renderedView || fixed !== this.renderedFixed;
     const throttleOk = now - this.builtAt > 110;
@@ -100,7 +100,7 @@ export class MapLayer implements Layer {
       else this.gradeDark(sx, PW, PH);
     }
     this.cinematic(sx, PW, PH, cfg.mapStyle === "satellite");
-    this.rings(sx, padCam, cfg);
+    if (cfg.rangeRings || cfg.gridOverlay === "rings") this.rings(sx, padCam, cfg); // honor the toggle
   }
 
   // Does the cached (oversized) buffer, transformed to the live camera, still cover the

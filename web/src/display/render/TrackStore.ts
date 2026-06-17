@@ -23,6 +23,7 @@ interface Track {
   transitGround?: boolean; // the NEW state at that flip (true = landed, false = took off)
   transitLat?: number;
   transitLon?: number;
+  rej?: { lat: number; lon: number }; // last teleport-rejected fix (for the 2-fix corroboration)
 }
 
 const SMOOTH_TAU = 0.2; // s — low-pass time constant; damps the per-fix kink, GPS jitter, and
@@ -30,14 +31,66 @@ const SMOOTH_TAU = 0.2; // s — low-pass time constant; damps the per-fix kink,
 
 export class TrackStore {
   private tracks = new Map<string, Track>();
+  // Local-area centre + a sanity radius (captured from cfg in sample()) used to reject
+  // erroneous positions a transponder emits before GPS lock.
+  private cLat = 0;
+  private cLon = 0;
+  private haveCenter = false;
+  private sanityMi = 400;
+
+  /** Set the local-area centre eagerly (before the first render), so ingest's position sanity
+   *  gate is armed from the very first feed frame — otherwise an initial bad fix slips in. */
+  setCenter(lat: number, lon: number, radiusMi: number): void {
+    this.cLat = lat;
+    this.cLon = lon;
+    this.haveCenter = true;
+    this.sanityMi = Math.max(250, (radiusMi || 22) * 5);
+  }
 
   /** Ingest a snapshot: stamp each fix with arrival time, dedupe repeats. */
   ingest(list: Aircraft[]): void {
     const now = Date.now();
     for (const a of list) {
       if (a.lat == null || a.lon == null) continue;
+      // Suppress erroneous pre-GPS-lock positions. A transponder powering up at the airport
+      // often emits 0,0 (null island) or a continental default before its GPS locks, which
+      // makes the contact pop up off-map and then jump to its real spot. Reject implausible
+      // fixes outright so the contact only appears once it reports a real local position.
+      if (!Number.isFinite(a.lat) || !Number.isFinite(a.lon)) continue;
+      if (Math.abs(a.lat) < 0.02 && Math.abs(a.lon) < 0.02) continue;                 // 0,0 null island
+      if (a.lat < -89.9 || a.lat > 89.9 || a.lon < -180 || a.lon > 180) continue;     // out of range
+      if (this.haveCenter) {
+        const dMi = Math.hypot(a.lat - this.cLat, (a.lon - this.cLon) * Math.cos(this.cLat * DEG)) * 69;
+        if (dMi > this.sanityMi) continue;                                            // implausibly far
+      }
       let tr = this.tracks.get(a.hex);
-      if (!tr) {
+      if (tr) {
+        // Teleport rejection: a fix that jumps impossibly far from the last good position is a
+        // decode glitch — reject it. BUT a lone outlier must never wedge the track forever: if a
+        // SECOND consecutive fix corroborates the new spot, the stored anchor was the bad one, so
+        // re-anchor there. And ALWAYS keep the track alive (advance lastSeen) on a reject, so a
+        // wedged track doesn't prune-and-respawn every 30 s.
+        const lastH = tr.hist[tr.hist.length - 1];
+        if (lastH) {
+          const jMi = Math.hypot(a.lat - lastH.lat, (a.lon - lastH.lon) * Math.cos(lastH.lat * DEG)) * 69;
+          const dtH = Math.max(1 / 3600, (now - tr.lastSeen) / 3600000); // hours, min ~1 s
+          if (jMi / dtH > 2500) {
+            const corroborated = tr.rej &&
+              Math.hypot(a.lat - tr.rej.lat, (a.lon - tr.rej.lon) * Math.cos(a.lat * DEG)) * 69 < 1;
+            if (corroborated) {
+              tr.hist.length = 0; // two rejects agree → the old anchor was wrong, adopt the new spot
+              tr.rej = undefined;
+              tr.rLat = tr.rLon = tr.rT = undefined; // snap, don't glide across
+            } else {
+              tr.rej = { lat: a.lat, lon: a.lon };
+              tr.lastSeen = now; // still being heard — keep alive, don't prune-respawn
+              continue;
+            }
+          } else {
+            tr.rej = undefined; // a normal fix clears any pending reject
+          }
+        }
+      } else {
         tr = { latest: a, hist: [], lastSeen: now };
         this.tracks.set(a.hex, tr);
       }
@@ -84,6 +137,9 @@ export class TrackStore {
 
   /** Resolve the visible set at render time (now - delay), interpolated, with trails. */
   sample(cfg: Config): Visible[] {
+    // Capture the local-area centre + a generous sanity radius for ingest's position gate.
+    this.cLat = cfg.centerLat; this.cLon = cfg.centerLon; this.haveCenter = true;
+    this.sanityMi = Math.max(250, (cfg.radiusMiles || 22) * 5);
     const renderT = Date.now() - RENDER_DELAY_MS;
     const baseMs = Math.max(0, (cfg.trailSeconds ?? 90) * 1000);
     const out: Visible[] = [];
@@ -94,10 +150,21 @@ export class TrackStore {
       // Critically-damped low-pass toward the (linear) target: smooths the per-fix
       // heading kink and GPS jitter without overshoot. A large gap (reacquired track)
       // gives alpha→1, i.e. it snaps rather than drifting. Advanced once per render tick.
+      // When "Smooth motion" (cfg.interpolate) is OFF, snap straight to the latest raw fix.
       let pos = target;
-      if (tr.rLat != null && tr.rLon != null && tr.rT != null && renderT > tr.rT) {
-        const alpha = 1 - Math.exp(-(renderT - tr.rT) / 1000 / SMOOTH_TAU);
-        pos = { lat: tr.rLat + (target.lat - tr.rLat) * alpha, lon: tr.rLon + (target.lon - tr.rLon) * alpha };
+      if (cfg.interpolate === false) {
+        pos = { lat: tr.latest.lat ?? target.lat, lon: tr.latest.lon ?? target.lon };
+      } else if (tr.rLat != null && tr.rLon != null && tr.rT != null && renderT > tr.rT) {
+        // SNAP a large positional correction instead of gliding across the map: the low-pass is
+        // meant to smooth per-fix jitter, not animate a teleport/re-anchor from wrong→right.
+        const jumpM = Math.hypot(target.lat - tr.rLat, (target.lon - tr.rLon) * Math.cos(target.lat * DEG)) * 111320;
+        const plausM = 120 + (tr.latest.gs ?? 0) * 0.514444 * ((renderT - tr.rT) / 1000) * 2;
+        if (jumpM > plausM && jumpM > 400) {
+          pos = target;
+        } else {
+          const alpha = 1 - Math.exp(-(renderT - tr.rT) / 1000 / SMOOTH_TAU);
+          pos = { lat: tr.rLat + (target.lat - tr.rLat) * alpha, lon: tr.rLon + (target.lon - tr.rLon) * alpha };
+        }
       }
       if (tr.rT == null || renderT >= tr.rT) { tr.rLat = pos.lat; tr.rLon = pos.lon; tr.rT = renderT; }
       // Length scales with groundspeed (on top of the time window already making
@@ -152,16 +219,35 @@ function predictPos(hist: Sample[], a: Aircraft, t: number): { lat: number; lon:
   const last = hist[hist.length - 1];
   if (t >= last.t) {
     if (a.onGround) {
-      // Ground: coast along the actual TAXI PATH — the direction of the last movement segment
-      // — capped short, so it glides smoothly instead of pausing, and doesn't veer on the
-      // noisy reported surface track. A pinned/parked aircraft has a ~zero segment, so it
-      // stays put.
-      if (hist.length < 2) return { lat: last.lat, lon: last.lon };
-      const prev = hist[hist.length - 2];
-      const dt = last.t - prev.t;
-      if (dt <= 0) return { lat: last.lat, lon: last.lon };
-      const k = Math.min(t - last.t, 1500) / dt; // up to 1.5 s of taxi coast
-      return { lat: last.lat + (last.lat - prev.lat) * k, lon: last.lon + (last.lon - prev.lon) * k };
+      // Ground motion is predicted in two regimes so a landing ROLLOUT and a slow TAXI turn
+      // are each smooth and predictable, instead of both coasting on one noisy segment:
+      const gs = a.gs ?? 0;
+      const age = t - last.t;
+      if (gs < 3 || hist.length < 2) return { lat: last.lat, lon: last.lon }; // parked — pin
+      if (gs >= 30 && a.track != null) {
+        // Rollout / fast taxi: the reported ground track is reliable at speed, so dead-reckon
+        // straight along it. Capped SHORT (1.2 s) — just enough to bridge the gap to the next
+        // fix without over-running it, so a deceleration/turn doesn't snap the glyph back.
+        return deadReckon(last, gs, a.track, Math.min(age, 1200));
+      }
+      // Slow taxi: the reported track is unreliable at low speed, so coast along the AVERAGED
+      // recent ground path (a ~1.6 s window) for a stable heading. Forward coast is capped
+      // SHORT (0.6 s): slow taxi is stop-and-go, and over-predicting past a hold-short is what
+      // produces the "rubberband" snap-back. A short coast keeps motion smooth without overshoot;
+      // the low-pass in sample() absorbs the small remaining correction.
+      let ref = hist[hist.length - 2];
+      for (let i = hist.length - 2; i >= 0; i--) {
+        ref = hist[i];
+        if (last.t - hist[i].t >= 1600) break;
+      }
+      const span = last.t - ref.t;
+      if (span <= 0) return { lat: last.lat, lon: last.lon };
+      // If it barely moved over the window it's parked/idling (GPS jitter, not taxi) — pin it
+      // rather than coasting along noise. Catches the gs 3–10 kt jitter the gs<3 pin misses.
+      const moveM = Math.hypot(last.lat - ref.lat, (last.lon - ref.lon) * Math.cos(last.lat * DEG)) * 111320;
+      if (moveM < 8) return { lat: last.lat, lon: last.lon };
+      const k = Math.min(age, 600) / span;
+      return { lat: last.lat + (last.lat - ref.lat) * k, lon: last.lon + (last.lon - ref.lon) * k };
     }
     return deadReckon(last, a.gs, a.track, t - last.t);
   }

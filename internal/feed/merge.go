@@ -22,8 +22,12 @@ func MergeSources(radio, api []aircraft.Aircraft) []aircraft.Aircraft {
 			byHex[r.Hex] = r
 			continue
 		}
-		rSeen := r.Seen - 2 // bias toward the local radio
-		aSeen := existing.Seen
+		// Compare POSITION freshness (what the client plots), not message age: a radio
+		// target can have a recent Mode-S message (Seen≈1) but a stale position
+		// (SeenPos≈40). Using posAge makes a stale-position radio fix correctly lose to a
+		// fresher API position instead of plotting a 40 s-old point.
+		rSeen := posAge(r) - 2 // bias toward the local radio
+		aSeen := posAge(existing)
 		if aSeen == 0 {
 			aSeen = 6 // missing/zero API seen → 6 s, so radio doesn't win forever
 		}
@@ -33,7 +37,23 @@ func MergeSources(radio, api []aircraft.Aircraft) []aircraft.Aircraft {
 	}
 	out := make([]aircraft.Aircraft, 0, len(byHex))
 	for _, a := range byHex {
+		if a.Lat == nil || a.Lon == nil {
+			continue // never emit a positionless entry (defense-in-depth alongside normalize)
+		}
 		out = append(out, a)
 	}
 	return out
+}
+
+// posAge is the age of the aircraft's POSITION in seconds: the measured position age
+// (SeenPos) when the decoder reported it, else the message age (Seen). A record with NO
+// position is treated as infinitely old so it can never win the merge as "freshest".
+func posAge(a aircraft.Aircraft) float64 {
+	if a.Lat == nil || a.Lon == nil {
+		return 1e9
+	}
+	if a.SeenPos != nil {
+		return *a.SeenPos
+	}
+	return a.Seen
 }

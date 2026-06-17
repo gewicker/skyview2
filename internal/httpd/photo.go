@@ -53,6 +53,17 @@ func photoHandler(w http.ResponseWriter, r *http.Request) {
 	res, ok := fetchPhoto(hex, reg)
 	photoMu.Lock()
 	photoCache[hex] = photoEntry{data: res, at: time.Now(), ok: ok}
+	// Bound the cache: it previously only TTL-gated on read and never deleted, so it grew for
+	// every hex ever queried. Sweep expired entries once it gets large (keeps a long-running
+	// Pi from slowly leaking the photo map).
+	if len(photoCache) > 600 {
+		cut := time.Now().Add(-6 * time.Hour)
+		for k, v := range photoCache {
+			if v.at.Before(cut) {
+				delete(photoCache, k)
+			}
+		}
+	}
 	photoMu.Unlock()
 	if ok {
 		writeJSON(w, res)

@@ -62,3 +62,50 @@ export const KPAE: Airport = {
 };
 
 export const AIRPORTS: Airport[] = [KSEA, KBFI, KRNT, KPAE];
+
+// Installed approach + runway lighting per runway END (current FAA cycle). Keyed by ICAO then
+// the end ident (matches Runway.leIdent / heIdent). Used by NightLightsLayer to draw an
+// aviation-accurate night scene: the right approach light system per end, REIL strobes,
+// centerline + touchdown-zone lights on the precision (SEA) ends, and edge-light intensity.
+export type ALSType =
+  | "ALSF2"  // CAT II/III: 2400 ft, white spine + 1000 ft decision bar + red side rows + rabbit
+  | "MALSR"  // 2400 ft: 1400 ft steady bars + 1000 ft decision bar + 5 RAIL flashers
+  | "MALSF"  // 1400 ft: steady bars, outer 3 stations flash
+  | "MALS"   // 1400 ft: steady bars only
+  | "REIL"   // no bar system — just the two threshold strobes
+  | "NONE";
+
+export interface EndLighting {
+  als: ALSType;
+  reil: boolean;        // synchronized white strobes at the threshold corners
+  centerline: boolean;  // runway centerline lights (precision)
+  tdz: boolean;         // touchdown-zone bars (precision)
+  edge: "HIRL" | "MIRL" | "NONE";
+}
+
+export const LIGHTING: Record<string, Record<string, EndLighting>> = {
+  KSEA: {
+    "16L": { als: "ALSF2", reil: false, centerline: true, tdz: true, edge: "HIRL" },
+    "34R": { als: "MALSR", reil: false, centerline: true, tdz: true, edge: "HIRL" },
+    "16C": { als: "ALSF2", reil: false, centerline: true, tdz: true, edge: "HIRL" },
+    "34C": { als: "MALSR", reil: false, centerline: true, tdz: true, edge: "HIRL" },
+    "16R": { als: "ALSF2", reil: false, centerline: true, tdz: true, edge: "HIRL" },
+    "34L": { als: "MALSR", reil: false, centerline: true, tdz: true, edge: "HIRL" },
+  },
+  KBFI: {
+    "14R": { als: "MALSF", reil: false, centerline: false, tdz: false, edge: "HIRL" },
+    "32L": { als: "REIL", reil: true, centerline: false, tdz: false, edge: "HIRL" },
+    "14L": { als: "NONE", reil: true, centerline: false, tdz: false, edge: "MIRL" },
+    "32R": { als: "NONE", reil: true, centerline: false, tdz: false, edge: "MIRL" },
+  },
+  KRNT: {
+    "16": { als: "REIL", reil: true, centerline: false, tdz: false, edge: "MIRL" },
+    "34": { als: "REIL", reil: true, centerline: false, tdz: false, edge: "MIRL" },
+  },
+  KPAE: {
+    "16R": { als: "MALSR", reil: false, centerline: true, tdz: false, edge: "HIRL" },
+    "34L": { als: "MALSF", reil: false, centerline: true, tdz: false, edge: "HIRL" },
+    "16L": { als: "NONE", reil: true, centerline: false, tdz: false, edge: "MIRL" },
+    "34R": { als: "NONE", reil: true, centerline: false, tdz: false, edge: "MIRL" },
+  },
+};

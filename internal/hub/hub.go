@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
@@ -48,7 +49,18 @@ func New(cfg *store.Config, scenes *store.Scenes, notable *store.Notable) *Hub {
 }
 
 // SetPrime registers the latest-snapshot source for the connect-time prime.
-func (h *Hub) SetPrime(fn func() msg.ServerMessage) { h.prime = fn }
+// Guarded by h.mu so the set (startup) can't race a concurrent client read.
+func (h *Hub) SetPrime(fn func() msg.ServerMessage) {
+	h.mu.Lock()
+	h.prime = fn
+	h.mu.Unlock()
+}
+
+func (h *Hub) getPrime() func() msg.ServerMessage {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.prime
+}
 
 // Handle upgrades the request and serves the client until it closes.
 func (h *Hub) Handle(w http.ResponseWriter, r *http.Request) {
@@ -63,8 +75,8 @@ func (h *Hub) Handle(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	cfg := h.cfg.Get()
 	cl.write(ctx, msg.ServerMessage{Type: "config", Config: &cfg})
-	if h.prime != nil {
-		cl.write(ctx, h.prime())
+	if p := h.getPrime(); p != nil {
+		cl.write(ctx, p())
 	}
 	cl.write(ctx, msg.ServerMessage{Type: "scenes", Scenes: h.scenes.List()})
 	cl.write(ctx, msg.ServerMessage{Type: "notable", Notable: h.notable.List()})
@@ -109,8 +121,14 @@ func (h *Hub) onMessage(ctx context.Context, cl *client, m msg.ClientMessage) {
 	}
 }
 
-// Broadcast sends a message to every connected client.
+// Broadcast sends a message to every connected client. The frame is marshalled ONCE
+// (not re-encoded per client — the dominant per-tick CPU cost on the Pi with a 100+
+// aircraft list) and the prebuilt bytes are written to each client.
 func (h *Hub) Broadcast(ctx context.Context, m msg.ServerMessage) {
+	b, err := json.Marshal(m)
+	if err != nil {
+		return
+	}
 	h.mu.RLock()
 	cls := make([]*client, 0, len(h.clients))
 	for c := range h.clients {
@@ -118,14 +136,32 @@ func (h *Hub) Broadcast(ctx context.Context, m msg.ServerMessage) {
 	}
 	h.mu.RUnlock()
 	for _, c := range cls {
-		c.write(ctx, m)
+		c.writeRaw(ctx, b)
 	}
 }
 
+// write marshals + sends a single message with a bounded deadline, closing the conn on
+// failure so a stalled/half-open client can't block the broadcast loop forever.
 func (c *client) write(ctx context.Context, m msg.ServerMessage) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	_ = wsjson.Write(ctx, c.conn, m)
+	wctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := wsjson.Write(wctx, c.conn, m); err != nil {
+		_ = c.conn.Close(websocket.StatusPolicyViolation, "write timeout")
+	}
+}
+
+// writeRaw sends prebuilt JSON bytes (a pre-marshalled ServerMessage) as a text frame,
+// with the same bounded deadline + close-on-error semantics as write.
+func (c *client) writeRaw(ctx context.Context, b []byte) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	wctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := c.conn.Write(wctx, websocket.MessageText, b); err != nil {
+		_ = c.conn.Close(websocket.StatusPolicyViolation, "write timeout")
+	}
 }
 
 func (h *Hub) add(c *client) {

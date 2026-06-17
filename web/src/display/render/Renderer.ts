@@ -68,7 +68,11 @@ export class Renderer {
   }
   stop(): void { cancelAnimationFrame(this.raf); }
 
-  update(aircraft: Aircraft[]): void { this.store.ingest(aircraft); }
+  update(aircraft: Aircraft[]): void {
+    const c = this.getConfig();
+    if (c) this.store.setCenter(c.centerLat, c.centerLon, c.radiusMiles); // arm the sanity gate before ingest
+    this.store.ingest(aircraft);
+  }
 
   resize(): void {
     // renderScale lets the Pi kiosk paint below native density (e.g. 0.75 on a 4K
@@ -76,8 +80,8 @@ export class Renderer {
     const scale = this.getConfig?.()?.renderScale || 1;
     const native = Math.max(1, window.devicePixelRatio || 1);
     this.dpr = clamp(native * scale, 0.5, 2);
-    this.w = this.canvas.clientWidth || window.innerWidth;
-    this.h = this.canvas.clientHeight || window.innerHeight;
+    this.w = Math.max(1, this.canvas.clientWidth || window.innerWidth || 1);
+    this.h = Math.max(1, this.canvas.clientHeight || window.innerHeight || 1);
     this.canvas.width = Math.round(this.w * this.dpr);
     this.canvas.height = Math.round(this.h * this.dpr);
   }
@@ -198,7 +202,8 @@ export class Renderer {
   private zoomForMapZoom(mapZoom: number): number {
     const spanMi = 16 / (mapZoom || 1);
     const worldSpan = (spanMi * MILE_M) / (2 * Math.PI * 6378137);
-    return Math.log2(this.w / (256 * worldSpan));
+    const z = Math.log2(Math.max(1, this.w) / (256 * worldSpan));
+    return Number.isFinite(z) ? z : 0; // never feed NaN/Inf into the camera scale
   }
 }
 

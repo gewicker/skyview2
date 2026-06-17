@@ -5,6 +5,7 @@ package feed
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/gewicker/skyview2/internal/aircraft"
 )
@@ -49,9 +50,27 @@ type rawAircraft struct {
 
 func ptr(f float64) *float64 { return &f }
 
-// normalize converts a raw record into our Aircraft, or nil if it has no hex.
+// normalize converts a raw record into our Aircraft, or nil if it should be dropped. This is
+// the single server-side validity gate (no client should have to defend against feed garbage):
+// drop records with no hex, TIS-B/ADS-R surrogate echoes, ground service vehicles, and records
+// with no plottable or a frozen/stale position — the things that otherwise render as phantom
+// "ground targets spawning and moving around the map."
 func normalize(raw rawAircraft) *aircraft.Aircraft {
-	if raw.Hex == "" {
+	if raw.Hex == "" || strings.HasPrefix(raw.Hex, "~") {
+		return nil // no hex, or a TIS-B/ADS-R surrogate that would shadow the real airframe
+	}
+	// Emitter categories C1 (surface emergency), C2 (surface service), C3 (point obstacle) are
+	// ground vehicles/obstacles that drive around the ramp — not aircraft.
+	switch raw.Category {
+	case "C1", "C2", "C3":
+		return nil
+	}
+	// No position, or a frozen/stale one (readsb keeps a target ~60 s after last contact with
+	// its last position) — drop, so it never spawns as a phantom that then jumps.
+	if raw.Lat == nil || raw.Lon == nil {
+		return nil
+	}
+	if raw.SeenPos != nil && *raw.SeenPos > 60 {
 		return nil
 	}
 	ac := &aircraft.Aircraft{
@@ -89,6 +108,12 @@ func normalize(raw rawAircraft) *aircraft.Aircraft {
 		if err := json.Unmarshal(raw.AltBaro, &alt); err == nil {
 			ac.AltBaro = ptr(alt)
 		}
+	}
+	// Low + slow with no "ground" string → still treat as a surface contact, so it doesn't reach
+	// the client's airborne dead-reckoner (which would fling it across the ramp between fixes).
+	// Conservative thresholds so genuine slow/low approach traffic stays airborne.
+	if !ac.OnGround && ac.AltBaro != nil && *ac.AltBaro < 1000 && (ac.GS == nil || *ac.GS < 40) {
+		ac.OnGround = true
 	}
 	return ac
 }
