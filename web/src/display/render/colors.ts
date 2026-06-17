@@ -16,10 +16,10 @@ const ALT_STOPS: [number, RGB][] = [
   [8000, [238, 210, 110]],  // golden wheat — top of the warm band
   [11000, [190, 214, 120]], // sage — earth gives way to sky
   [15000, [126, 205, 150]], // meadow green
-  [20000, [86, 196, 205]],  // teal
-  [27000, [96, 198, 248]],  // sky blue
-  [35000, [140, 218, 255]], // bright azure
-  [44000, [190, 236, 255]], // very high — airy ice-blue
+  [20000, [96, 192, 206]],  // teal
+  [27000, [140, 198, 224]], // softening toward pale (pulled off saturated cyan)
+  [35000, [188, 216, 238]], // pale steel-blue — low chroma so it doesn't collide with chart cyan
+  [44000, [224, 236, 248]], // very high — near-white ice (reads as "bright", not "cyan")
 ];
 
 export function altRamp(alt: number): RGB {
@@ -63,11 +63,11 @@ function mixSrgb(a: RGB, b: RGB, t: number): RGB {
 // magenta-red (a hue the map never uses) so jams pop. Designed to read as 3–4 discrete bands
 // from across a room, not a continuous mush. Gamma-correct linear-light mix as before.
 const CONG_STOPS: [number, RGB][] = [
-  [0.0, [90, 105, 120]],    // clear — dim cool slate (recedes into the map)
-  [0.35, [120, 150, 170]],  // light — pale steel
+  [0.0, [110, 128, 145]],   // clear — lifted cool (reads as a quiet line, not "no data")
+  [0.35, [132, 160, 180]],  // light — pale steel
   [0.6, [230, 170, 70]],    // slow — amber (cool→warm crossover: the first alarm)
-  [0.8, [235, 120, 60]],    // heavy — orange
-  [1.0, [240, 75, 95]],     // jam — hot magenta-red
+  [0.8, [236, 118, 70]],    // heavy — orange
+  [1.0, [236, 70, 120]],    // jam — hot red-MAGENTA (a hue the map never uses; separates from emergency/trail red)
 ];
 
 export function congRamp(t: number): RGB {

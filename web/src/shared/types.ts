@@ -25,20 +25,19 @@ export interface Config {
   mapZoom: number; mapCenterLat: number; mapCenterLon: number; mapRotationDeg: number;
   rotationDeg: number; mirrorX: boolean; mirrorY: boolean;
   minAltitudeFt: number; maxAltitudeFt: number; hideOnGround: boolean;
-  interpolate: boolean; maxExtrapolationSec: number; staleSec: number;
+  interpolate: boolean;
   maxFps: number; renderScale: number;
   skin: Skin; mapStyle: MapStyle; gridOverlay: GridOverlay;
   palette: Palette; fonts: Fonts; glyphSizePx: number; altitudeColor: boolean;
   trailMode: TrailMode; trailSeconds: number; trailBoost: number; brightness: number;
   labelDensity: LabelDensity; nearestN: number; showFields: ShowFields;
-  rangeRings: boolean; compass: boolean; showAirport: boolean; showApproaches: boolean;
-  showFinal: boolean; showTraffic: boolean; showHome: boolean; showHud: boolean;
+  rangeRings: boolean; showAirport: boolean; showApproaches: boolean;
+  showFinal: boolean; showTraffic: boolean; showHome: boolean;
   showRelative: boolean; highlightEmergency: boolean; showNotable: boolean;
   notableFlash: boolean; notableWebhook: string; showWinds: boolean; showPhotos: boolean;
-  showDestArc: boolean; showRouteDetail: boolean; burnInOrbit: boolean; followSelected: boolean;
+  burnInOrbit: boolean; followSelected: boolean;
   showSpotlight: boolean; spotlightRadiusMi: number; spotlightLat: number; spotlightLon: number;
-  showStars: boolean; showSun: boolean; showMoon: boolean; showSatellites: boolean;
-  starMagLimit: number; skyTimeOffsetMin: number;
+  skyTimeOffsetMin: number;
   showNavaids: boolean; showProcedures: boolean;
   showProcRaster: boolean; procRasterUrl: string; procRasterOpacity: number;
   lightsMode: string; // "auto" | "on" | "off" — aircraft + airport lighting
@@ -65,7 +64,7 @@ export interface Aircraft {
 }
 
 export interface SourceStatus { ok: boolean; source: string; count: number; message?: string }
-export interface SceneMeta { name: string }
+export interface SceneMeta { name: string; savedAt?: number }
 export interface NotableEvent { hex: string; flight?: string; reason: string; at: number }
 
 export type ServerMessage =

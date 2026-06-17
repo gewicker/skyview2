@@ -91,12 +91,11 @@ type Config struct {
 	MaxAltitudeFt float64 `json:"maxAltitudeFt"`
 	HideOnGround  bool    `json:"hideOnGround"`
 
-	// Motion / performance.
-	Interpolate         bool    `json:"interpolate"`
-	MaxExtrapolationSec float64 `json:"maxExtrapolationSec"`
-	StaleSec            float64 `json:"staleSec"`
-	MaxFps              float64 `json:"maxFps"`
-	RenderScale         float64 `json:"renderScale"`
+	// Motion / performance. (maxExtrapolationSec/staleSec removed — were dead config: the
+	// client hardcodes its own timing in TrackStore.)
+	Interpolate bool    `json:"interpolate"`
+	MaxFps      float64 `json:"maxFps"`
+	RenderScale float64 `json:"renderScale"`
 
 	// Skin & style.
 	Skin        Skin        `json:"skin"`
@@ -120,13 +119,11 @@ type Config struct {
 
 	// Overlays & alerts.
 	RangeRings        bool   `json:"rangeRings"`
-	Compass           bool   `json:"compass"`
 	ShowAirport       bool   `json:"showAirport"`
 	ShowApproaches    bool   `json:"showApproaches"`
 	ShowFinal         bool   `json:"showFinal"`
 	ShowTraffic       bool   `json:"showTraffic"`
 	ShowHome          bool   `json:"showHome"`
-	ShowHud           bool   `json:"showHud"`
 	ShowRelative      bool   `json:"showRelative"`
 	HighlightEmergency bool  `json:"highlightEmergency"`
 	ShowNotable       bool   `json:"showNotable"`
@@ -191,7 +188,7 @@ func Default() Config {
 		CenterLat: 47.618431, CenterLon: -122.191076, RadiusMiles: 22, // home: 909 112th Ave NE, Bellevue
 		Zoom: 2.5,
 		MapZoom: 1, MapCenterLat: 47.585, MapCenterLon: -122.255, MapRotationDeg: 270, // East up (faces 405)
-		MaxExtrapolationSec: 8, StaleSec: 30, MaxFps: 24, RenderScale: 1, Interpolate: true,
+		MaxFps: 24, RenderScale: 1, Interpolate: true,
 		Skin: SkinMap, MapStyle: StyleSatellite, GridOverlay: "off",
 		Palette: Palette{BG: "#05080d", Glyph: "#ff9a3c", Trail: "#cfd8e3",
 			Accent: "#39c2d8", Warn: "#ff5a4d", Grid: "#1d3a44", Text: "#dfe7f2"},

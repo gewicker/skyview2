@@ -582,25 +582,17 @@ function drawGroundMarker(ctx: CanvasRenderingContext2D, kind: GlyphKind, rgb: R
   ctx.save();
   if (fade < 1) ctx.globalAlpha = fade;
   ctx.lineJoin = "round";
-  if (gs >= 3) {
-    // Compact top-view silhouette, sized by kind, oriented along travel (ctx already rotated).
-    const s = Math.max(5, b * 0.5 * GLYPH_SCALE[kind]);
-    drawGlyphStatic(ctx, kind, s, rgb, 0.96);
-  } else {
-    const r = Math.max(2.2, b * 0.2);
-    ctx.beginPath();
-    ctx.arc(0, 0, r, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(0,0,0,0.4)";
-    ctx.lineWidth = 1.1;
-    ctx.stroke();
-    ctx.fillStyle = `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},0.95)`;
-    ctx.fill();
-  }
+  // EVERY on-ground aircraft is the same compact silhouette — no dot/glyph split (that read as
+  // inconsistent at a busy ramp). Parked (gs<3) draws a touch smaller + dimmer to declutter dense
+  // ramps, but it's the same shape as a taxiing one. Oriented along travel (ctx already rotated).
+  const moving = gs >= 3;
+  const s = Math.max(5, b * (moving ? 0.5 : 0.42) * GLYPH_SCALE[kind]);
+  drawGlyphStatic(ctx, kind, s, rgb, moving ? 0.96 : 0.82);
   if (sel) {
     ctx.strokeStyle = "rgba(255,210,120,0.9)";
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.arc(0, 0, (gs >= 3 ? b * 0.5 : b * 0.2) + 6, 0, Math.PI * 2);
+    ctx.arc(0, 0, s + 5, 0, Math.PI * 2);
     ctx.stroke();
   }
   ctx.restore();

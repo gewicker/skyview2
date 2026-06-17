@@ -388,7 +388,7 @@ function TapCard({ a, cfg, onClose }: { a: Aircraft; cfg: Config; onClose: () =>
   useEffect(() => {
     let alive = true;
     setPhoto(null);
-    fetch(`/api/photo/${a.hex}`)
+    fetch(`/api/photo/${a.hex}${a.registration ? `?reg=${encodeURIComponent(a.registration)}` : ""}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => { if (alive && j && j.url) setPhoto(j.url as string); })
       .catch(() => {});
