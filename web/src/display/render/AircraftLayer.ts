@@ -323,40 +323,54 @@ export class AircraftLayer implements Layer {
 // One-time takeoff/landing flourish in screen space. Landing: a cool expanding ripple
 // (touchdown). Takeoff: a warm additive glow kick (liftoff). fp is 0→1 over FLOURISH_MS.
 function drawFlourish(ctx: CanvasRenderingContext2D, x: number, y: number, fp: number, landing: boolean, screenHdg: number): void {
+  const fx = Math.sin(screenHdg), fy = -Math.cos(screenHdg); // forward (nose) direction, screen
+  const px = Math.cos(screenHdg), py = Math.sin(screenHdg);  // perpendicular (gear straddle)
+  const gear = 7;
   ctx.save();
   if (landing) {
-    for (let i = 0; i < 2; i++) {
-      const lp = fp - i * 0.2;
-      if (lp <= 0 || lp >= 1) continue;
-      const e = 1 - (1 - lp) * (1 - lp);
-      ctx.strokeStyle = `rgba(150,225,255,${((1 - lp) * 0.7).toFixed(3)})`;
-      ctx.lineWidth = 2 - lp;
-      ctx.beginPath();
-      ctx.arc(x, y, 5 + e * 30, 0, Math.PI * 2);
-      ctx.stroke();
+    // Touchdown sparks at the two main gear — a bright cool-white hit, fires first, fast decay.
+    const tp = fp / 0.18;
+    if (tp > 0 && tp < 1) {
+      const e = 1 - (1 - tp) * (1 - tp), sa = 1 - tp;
+      ctx.globalCompositeOperation = "lighter";
+      for (const sgn of [-1, 1]) {
+        const gx = x + px * sgn * gear, gy = y + py * sgn * gear;
+        ctx.fillStyle = `rgba(225,245,255,${(sa * 0.8).toFixed(3)})`;
+        ctx.beginPath(); ctx.arc(gx, gy, 2 + e * 6, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = `rgba(255,255,255,${(sa * 0.9).toFixed(3)})`;
+        ctx.beginPath(); ctx.arc(gx, gy, 1.4 + e * 2, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalCompositeOperation = "source-over";
     }
-    // Wheel-smoke puffs straddling the runway at the main gear — expand + fade.
-    const px = Math.cos(screenHdg), py = Math.sin(screenHdg);
-    for (let i = 0; i < 2; i++) {
-      const pp = fp - i * 0.12;
-      if (pp <= 0 || pp >= 1) continue;
+    // Tire spray — warm-gray rubber smoke blown forward + outboard from each gear, dissipating.
+    const pp = (fp - 0.06) / 0.5;
+    if (pp > 0 && pp < 1) {
       const e = 1 - (1 - pp) * (1 - pp);
-      const r = 2.5 + e * 11, off = 4 + e * 7;
-      ctx.fillStyle = `rgba(208,214,222,${((1 - pp) * 0.38).toFixed(3)})`;
-      ctx.beginPath(); ctx.arc(x + px * off, y + py * off, r, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(x - px * off, y - py * off, r, 0, Math.PI * 2); ctx.fill();
+      for (const sgn of [-1, 1]) {
+        const gx = x + fx * e * 10 + px * sgn * (gear + e * 6);
+        const gy = y + fy * e * 10 + py * sgn * (gear + e * 6);
+        ctx.fillStyle = `rgba(210,206,198,${((1 - pp) * 0.34).toFixed(3)})`;
+        ctx.beginPath(); ctx.arc(gx, gy, 2.5 + e * 7, 0, Math.PI * 2); ctx.fill();
+      }
     }
   } else {
     const e = 1 - (1 - fp) * (1 - fp);
-    const r = 6 + e * 24;
+    // Backward dust kick (2 puffs aft) as it accelerates away down the runway.
+    for (const sgn of [-1, 1]) {
+      const gx = x - fx * (5 + e * 10) + px * sgn * 4;
+      const gy = y - fy * (5 + e * 10) + py * sgn * 4;
+      ctx.fillStyle = `rgba(205,200,190,${((1 - fp) * 0.3).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(gx, gy, 3 + e * 9, 0, Math.PI * 2); ctx.fill();
+    }
+    // Warm liftoff flash at the unstick point.
+    const r = 5 + e * 22;
     const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-    g.addColorStop(0, `rgba(255,190,110,${((1 - fp) * 0.5).toFixed(3)})`);
-    g.addColorStop(1, "rgba(255,170,90,0)");
+    g.addColorStop(0, `rgba(255,200,120,${((1 - fp) * 0.45).toFixed(3)})`);
+    g.addColorStop(1, "rgba(255,180,100,0)");
     ctx.globalCompositeOperation = "lighter";
     ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.globalCompositeOperation = "source-over";
   }
   ctx.restore();
 }

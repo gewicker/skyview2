@@ -12,6 +12,7 @@ import { ProcedureLayer } from "./render/ProcedureLayer";
 import { NavaidLayer } from "./render/NavaidLayer";
 import { PlaceLabelsLayer } from "./render/PlaceLabelsLayer";
 import { TrailLayer } from "./render/TrailLayer";
+import { RouteLayer } from "./render/RouteLayer";
 import { LeaderLayer } from "./render/LeaderLayer";
 import { AircraftLayer } from "./render/AircraftLayer";
 import { SpotlightLayer } from "./render/SpotlightLayer";
@@ -104,6 +105,7 @@ export default function Display() {
     r.use(new NavaidLayer());    // VOR roses / fixes (under traffic), off by default
     r.use(new StaticOverlayLayer([new PlaceLabelsLayer()], (f) => f.cfg.mapStyle));
     r.use(new TrailLayer());
+    r.use(new RouteLayer());   // dashed great-circle to destination for the selected aircraft
     r.use(new LeaderLayer());
     r.use(new AircraftLayer());
     r.use(new SpotlightLayer());
@@ -387,6 +389,24 @@ function TapCard({ a, cfg, onClose }: { a: Aircraft; cfg: Config; onClose: () =>
   };
   const callsign = a.flight || a.registration || a.hex.toUpperCase();
   const ends = routeEnds(a);
+  // Tier-1 flight plan: progress along the route + distance remaining + ETA, from the endpoint
+  // coords we already have. progress is null when we can't place the aircraft on the leg.
+  let progress: number | null = null, distRemNm: number | null = null, eta: string | null = null;
+  if (ends && ends.to.lat != null && ends.to.lon != null && a.lat != null && a.lon != null) {
+    const remMi = haversine(a.lat, a.lon, ends.to.lat, ends.to.lon);
+    if (remMi != null) {
+      distRemNm = Math.round(remMi * 0.8689);
+      if (a.gs != null && a.gs > 40) {
+        const dd = new Date(Date.now() + ((remMi * 0.8689) / a.gs) * 3600 * 1000);
+        eta = `${pad2(dd.getHours())}:${pad2(dd.getMinutes())}`;
+      }
+      if (ends.from.lat != null && ends.from.lon != null) {
+        const total = haversine(ends.from.lat, ends.from.lon, ends.to.lat, ends.to.lon);
+        const flown = haversine(ends.from.lat, ends.from.lon, a.lat, a.lon);
+        if (total != null && flown != null && total > 1) progress = Math.max(0, Math.min(1, flown / total));
+      }
+    }
+  }
   const onGround = !!a.onGround;
   const altVal = onGround ? "Ground" : a.altBaro != null ? Math.round(a.altBaro).toLocaleString() : "—";
   const spdVal = a.gs != null ? Math.round(a.gs).toLocaleString() : "—";
@@ -438,20 +458,41 @@ function TapCard({ a, cfg, onClose }: { a: Aircraft; cfg: Config; onClose: () =>
         <div style={{ height: 1, background: C.div }} />
         <div style={{ padding: "14px 16px", minHeight: 30 }}>
           {ends ? (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ font: "700 18px system-ui", letterSpacing: 0.2, color: C.primary, lineHeight: 1.05 }}>{ends.from.code || "—"}</div>
-                {ends.from.city && <div style={{ font: "500 11px system-ui", color: C.secondary, marginTop: 2, maxWidth: 108, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ends.from.city}</div>}
+            <>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ font: "700 18px system-ui", letterSpacing: 0.2, color: C.primary, lineHeight: 1.05 }}>{ends.from.code || "—"}</div>
+                  {ends.from.city && <div style={{ font: "500 11px system-ui", color: C.secondary, marginTop: 2, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ends.from.city}</div>}
+                </div>
+                <div style={{ flex: 1, position: "relative", height: 10, margin: "0 8px", display: "flex", alignItems: "center" }}>
+                  {progress != null ? (
+                    <>
+                      <div style={{ width: "100%", height: 3, borderRadius: 2, background: "rgba(91,184,255,0.28)" }}>
+                        <div style={{ width: `${(progress * 100).toFixed(1)}%`, height: 3, borderRadius: 2, background: "#5BB8FF" }} />
+                      </div>
+                      <div style={{ position: "absolute", left: `${(progress * 100).toFixed(1)}%`, transform: "translateX(-50%)",
+                        width: 0, height: 0, borderLeft: "7px solid #F4F6F9", borderTop: "4px solid transparent", borderBottom: "4px solid transparent",
+                        filter: "drop-shadow(0 0 3px rgba(91,184,255,0.7))" }} />
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ flex: 1, height: 1, background: "rgba(91,184,255,0.4)" }} />
+                      <span style={{ color: C.accent, font: "600 15px system-ui", marginLeft: 1 }}>→</span>
+                    </>
+                  )}
+                </div>
+                <div style={{ minWidth: 0, textAlign: "right" }}>
+                  <div style={{ font: "700 18px system-ui", letterSpacing: 0.2, color: C.primary, lineHeight: 1.05 }}>{ends.to.code || "—"}</div>
+                  {ends.to.city && <div style={{ font: "500 11px system-ui", color: C.secondary, marginTop: 2, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginLeft: "auto" }}>{ends.to.city}</div>}
+                </div>
               </div>
-              <div style={{ flex: 1, display: "flex", alignItems: "center", margin: "0 4px" }}>
-                <div style={{ flex: 1, height: 1, background: "rgba(91,184,255,0.45)" }} />
-                <span style={{ color: C.accent, font: "600 15px system-ui", marginLeft: 1 }}>→</span>
-              </div>
-              <div style={{ minWidth: 0, textAlign: "right" }}>
-                <div style={{ font: "700 18px system-ui", letterSpacing: 0.2, color: C.primary, lineHeight: 1.05 }}>{ends.to.code || "—"}</div>
-                {ends.to.city && <div style={{ font: "500 11px system-ui", color: C.secondary, marginTop: 2, maxWidth: 108, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginLeft: "auto" }}>{ends.to.city}</div>}
-              </div>
-            </div>
+              {distRemNm != null && (
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, font: "600 11px system-ui" }}>
+                  <span style={{ color: C.primary }}>{distRemNm.toLocaleString()}<span style={{ color: C.secondary, fontWeight: 500, marginLeft: 3 }}>nm</span></span>
+                  {eta && <span><span style={{ color: C.tertiary, fontSize: 10, fontWeight: 600 }}>ETA </span><span style={{ color: C.secondary }}>{eta}</span></span>}
+                </div>
+              )}
+            </>
           ) : (
             <div style={{ font: "500 13px system-ui", color: C.tertiary }}>◇ Route unknown</div>
           )}
@@ -486,14 +527,17 @@ function TapCard({ a, cfg, onClose }: { a: Aircraft; cfg: Config; onClose: () =>
 // Origin → destination, with a GEOMETRY leg-correction: route DBs give one canonical direction
 // per callsign, often the wrong leg. The true destination is the endpoint the aircraft is heading
 // TOWARD (its track points at it), so swap when the labelled origin is actually ahead.
-function routeEnds(a: Aircraft): { from: { code?: string; city?: string }; to: { code?: string; city?: string } } | null {
+type RouteEnd = { code?: string; city?: string; lat?: number | null; lon?: number | null };
+function routeEnds(a: Aircraft): { from: RouteEnd; to: RouteEnd } | null {
   if (!a.origin && !a.destination) return null;
-  let from = { code: a.origin, city: a.originName }, to = { code: a.destination, city: a.destName };
+  const O: RouteEnd = { code: a.origin, city: a.originName, lat: a.originLat, lon: a.originLon };
+  const D: RouteEnd = { code: a.destination, city: a.destName, lat: a.destLat, lon: a.destLon };
+  let from = O, to = D;
   if (a.track != null && a.lat != null && a.lon != null &&
       a.originLat != null && a.originLon != null && a.destLat != null && a.destLon != null) {
     const aO = angDiff(a.track, bearing(a.lat, a.lon, a.originLat, a.originLon));
     const aD = angDiff(a.track, bearing(a.lat, a.lon, a.destLat, a.destLon));
-    if (aO < aD - 25) { from = { code: a.destination, city: a.destName }; to = { code: a.origin, city: a.originName }; }
+    if (aO < aD - 25) { from = D; to = O; }
   }
   return { from, to };
 }
