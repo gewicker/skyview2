@@ -59,16 +59,14 @@ export const SEAPLANE_BASES: SeaplaneBase[] = [
   },
   {
     ident: "W36", name: "Will Rogers–Wiley Post Mem.",
-    lat: 47.50250, lon: -122.21950,
-    lanes: [
-      // Advisory water area on the south end of Lake Washington, off the NW corner of KRNT,
-      // running N into the lake. Short (W36 is mainly a ramp + dock).
-      { leIdent: "16", heIdent: "34", le: [47.51400, -122.21300], he: [47.50300, -122.21850], widthFt: 600 },
-    ],
+    lat: 47.50230, lon: -122.21830, // ramp at the NW corner of KRNT, on the lake edge
+    // W36 is mainly a ramp + dock — there is NO significant published water landing lane
+    // (floatplanes use the open lake), so we mark it with just the anchor + ramp/dock and
+    // draw no lane (an invented lane mis-placed onto the airport peninsula).
+    lanes: [],
     marks: [
-      // Launch ramp from shore into the water + a small dock.
-      { kind: "ramp", p: [47.50230, -122.21900, 47.50320, -122.21820] },
-      { kind: "dock", p: [47.50270, -122.21770, 47.50230, -122.21760] },
+      { kind: "ramp", p: [47.50205, -122.21850, 47.50270, -122.21785] }, // shore → water
+      { kind: "dock", p: [47.50250, -122.21770, 47.50215, -122.21762] },
     ],
   },
 ];
