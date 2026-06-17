@@ -638,16 +638,6 @@ function drawNavLights(ctx: CanvasRenderingContext2D, glyphS: number, a: LightAn
   ctx.globalCompositeOperation = "source-over";
 }
 
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-
 function seedFor(hex: string): number {
   let s = 0;
   for (let i = 0; i < hex.length; i++) s = (s + hex.charCodeAt(i)) % 628;
