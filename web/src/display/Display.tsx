@@ -5,6 +5,8 @@ import { Renderer } from "./render/Renderer";
 import { MapLayer } from "./render/MapLayer";
 import { AirportsLayer } from "./render/AirportsLayer";
 import { AirportDiagramLayer } from "./render/AirportDiagramLayer";
+import { SeaplaneLayer } from "./render/SeaplaneLayer";
+import { SeaplaneApproachLayer } from "./render/SeaplaneApproachLayer";
 import { StaticOverlayLayer } from "./render/StaticOverlayLayer";
 import { NightLightsLayer } from "./render/NightLightsLayer";
 import { ApproachLayer } from "./render/ApproachLayer";
@@ -103,10 +105,11 @@ export default function Display() {
     r.use(new RadarLayer());   // precip radar (weather) — translucent tint on the ground, off by default
     // Static airport geometry (taxiways/aprons/buildings + runways) baked into one cached
     // buffer keyed on the view — full-res at rest, re-baked only when the view settles.
-    r.use(new StaticOverlayLayer([new AirportDiagramLayer(), new AirportsLayer()],
+    r.use(new StaticOverlayLayer([new AirportDiagramLayer(), new SeaplaneLayer(), new AirportsLayer()],
       (f) => `${f.cfg.showAirport}|${f.cfg.showApproaches}`));
     r.use(new NightLightsLayer());    // runway/approach lights at night on the active runway
     r.use(new ApproachLayer());
+    r.use(new SeaplaneApproachLayer()); // water-lane tag for low/slow floatplanes on the lakes
     r.use(new ProcedureLayer()); // final-approach vectors (under traffic), off by default
     r.use(new NavaidLayer());    // VOR roses / fixes (under traffic), off by default
     r.use(new StaticOverlayLayer([new PlaceLabelsLayer()], (f) => f.cfg.mapStyle));
