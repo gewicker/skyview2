@@ -4,6 +4,7 @@
 // Ported from v1. NO shadowBlur (brutal in software rendering on the Pi); the halo
 // is the caller's job. Each component fills separately so overlaps union cleanly.
 import type { Aircraft } from "@shared/types";
+import { srgbToLin, linToSrgb } from "./colors";
 
 export type GlyphKind =
   | "light" | "turboprop" | "bizjet" | "airliner"
@@ -76,6 +77,25 @@ export function classifyGlyph(ac: Aircraft): GlyphKind {
 type RGB = [number, number, number];
 const col = (c: RGB, a: number) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 
+// Lighten (+) toward white / darken (−) toward black IN LINEAR LIGHT, so the altitude HUE is
+// preserved (no desaturation to gray). amt in [−1..1]. The basis of the pseudo-3D shading.
+function shade(c: RGB, amt: number): RGB {
+  const t = amt > 0 ? 255 : 0, k = Math.abs(amt);
+  const mix = (x: number) => linToSrgb(srgbToLin(x) + (srgbToLin(t) - srgbToLin(x)) * k);
+  return [mix(c[0]), mix(c[1]), mix(c[2])];
+}
+
+// A soft baked contact shadow (no shadowBlur — three stacked offset ellipses), so airborne
+// glyphs read as floating above the map. Drawn FIRST so the body sits on top of it.
+function contactShadow(ctx: CanvasRenderingContext2D, s: number): void {
+  for (const [m, a] of [[1.18, 0.05], [1.05, 0.07], [1.0, 0.1]] as const) {
+    ctx.fillStyle = `rgba(0,0,0,${a})`;
+    ctx.beginPath();
+    ctx.ellipse(0.1 * s, 0.14 * s, 0.85 * s * m, 0.55 * s * m, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
 interface JetParams {
   nose: number; tail: number; halfW: number; wingY: number; wingSpan: number;
   wingSweep: number; rootChord: number; tipChord: number; stabY: number;
@@ -127,24 +147,25 @@ export function lightAnchors(kind: GlyphKind): LightAnchors {
 // cached into a sprite — see glyphCache.ts.
 export function drawGlyphStatic(ctx: CanvasRenderingContext2D, kind: GlyphKind, s: number, color: RGB, alpha: number): void {
   ctx.shadowBlur = 0;
+  contactShadow(ctx, s); // baked drop shadow under the silhouette (floats above the map)
   const fill = col(color, Math.min(1, alpha * 1.08));
   switch (kind) {
     case "widebody":
-      jetSilhouette(ctx, s, JET_WIDE, fill);
+      jetSilhouette(ctx, s, JET_WIDE, fill, color);
       engines(ctx, s, fill, JET_WIDE.wingY + 0.3, [0.46]);
-      core(ctx, s, alpha, 0.07);
+      core(ctx, s, alpha, color);
       break;
     case "quadjet":
-      jetSilhouette(ctx, s, JET_QUAD, fill);
+      jetSilhouette(ctx, s, JET_QUAD, fill, color);
       engines(ctx, s, fill, JET_QUAD.wingY + 0.32, [0.34, 0.62]);
-      core(ctx, s, alpha, 0.07);
+      core(ctx, s, alpha, color);
       break;
     case "turboprop":
-      jetSilhouette(ctx, s, JET_TPROP, fill);
-      core(ctx, s, alpha, 0.09);
+      jetSilhouette(ctx, s, JET_TPROP, fill, color);
+      core(ctx, s, alpha, color);
       break;
     case "bizjet":
-      jetSilhouette(ctx, s, JET_BIZJET, fill);
+      jetSilhouette(ctx, s, JET_BIZJET, fill, color);
       ctx.beginPath();
       for (const sign of [-1, 1]) {
         ctx.moveTo(sign * 0.17 * s + 0.06 * s, 0.5 * s);
@@ -152,11 +173,11 @@ export function drawGlyphStatic(ctx: CanvasRenderingContext2D, kind: GlyphKind, 
       }
       ctx.fillStyle = fill;
       ctx.fill();
-      core(ctx, s, alpha, 0.08);
+      core(ctx, s, alpha, color);
       break;
     case "fighter":
       fighterBody(ctx, s, fill);
-      core(ctx, s, alpha, 0.08);
+      core(ctx, s, alpha, color);
       ctx.fillStyle = col([255, 196, 130], 0.55 * alpha);
       ctx.beginPath();
       ctx.arc(0, 1.0 * s, s * 0.11, 0, Math.PI * 2);
@@ -164,15 +185,16 @@ export function drawGlyphStatic(ctx: CanvasRenderingContext2D, kind: GlyphKind, 
       break;
     case "light":
       lightBody(ctx, s, fill);
+      core(ctx, s, alpha, color);
       break;
     case "helicopter":
       heliBody(ctx, s, fill);
       break;
     case "airliner":
     default:
-      jetSilhouette(ctx, s, JET_AIRLINER, fill);
+      jetSilhouette(ctx, s, JET_AIRLINER, fill, color);
       engines(ctx, s, fill, JET_AIRLINER.wingY + 0.28, [0.4]);
-      core(ctx, s, alpha, 0.07);
+      core(ctx, s, alpha, color);
       break;
   }
 }
@@ -231,10 +253,9 @@ function planform(ctx: CanvasRenderingContext2D, s: number, sign: number, rootY:
   ctx.closePath();
 }
 
-function jetSilhouette(ctx: CanvasRenderingContext2D, s: number, p: JetParams, fill: string): void {
+function jetSilhouette(ctx: CanvasRenderingContext2D, s: number, p: JetParams, fill: string, color: RGB): void {
+  // Wings + horizontal stab + vertical fin (flat fill), drawn first.
   ctx.fillStyle = fill;
-  fuselage(ctx, s, p);
-  ctx.fill();
   ctx.beginPath();
   for (const sign of [-1, 1]) planform(ctx, s, sign, p.wingY, p.wingSpan, p.wingSweep, p.rootChord, p.tipChord, p.halfW * 0.85);
   for (const sign of [-1, 1]) planform(ctx, s, sign, p.stabY, p.stabSpan, p.stabSweep, p.stabChord, p.stabChord, p.halfW * 0.6);
@@ -242,6 +263,17 @@ function jetSilhouette(ctx: CanvasRenderingContext2D, s: number, p: JetParams, f
   ctx.lineTo(0.045 * s, p.stabY * s);
   ctx.lineTo(0, (p.tail + 0.03) * s);
   ctx.closePath();
+  ctx.fill();
+  // Fuselage as a LIT TUBE on top: lateral gradient with the bright crown left of centre
+  // (light from top-left), preserving the altitude hue. Reads as volume when zoomed in.
+  const w = p.halfW * s;
+  const g = ctx.createLinearGradient(-w, 0, w, 0);
+  g.addColorStop(0, col(shade(color, -0.28), 1));
+  g.addColorStop(0.32, col(shade(color, 0.4), 1));
+  g.addColorStop(0.58, col(shade(color, 0.1), 1));
+  g.addColorStop(1, col(shade(color, -0.42), 1));
+  fuselage(ctx, s, p);
+  ctx.fillStyle = g;
   ctx.fill();
 }
 
@@ -357,10 +389,12 @@ function mainRotor(ctx: CanvasRenderingContext2D, s: number, color: RGB, alpha: 
   ctx.restore();
 }
 
-function core(ctx: CanvasRenderingContext2D, s: number, alpha: number, r: number): void {
+function core(ctx: CanvasRenderingContext2D, s: number, alpha: number, color: RGB): void {
   ctx.shadowBlur = 0;
-  ctx.fillStyle = col([255, 255, 255], 0.6 * alpha); // dimmer: let the nav lights own the bright points
+  // Hue-tinted crown specular (a lit highlight on the fuselage), forward + a hair to the lit
+  // side — replaces the old white centroid dot that competed with the nav lights/strobes.
+  ctx.fillStyle = col(shade(color, 0.82), 0.6 * alpha);
   ctx.beginPath();
-  ctx.arc(0, 0, s * r, 0, Math.PI * 2);
+  ctx.arc(-0.02 * s, -0.12 * s, s * 0.13, 0, Math.PI * 2);
   ctx.fill();
 }

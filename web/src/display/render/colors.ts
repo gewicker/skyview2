@@ -42,11 +42,11 @@ export function lerp(a: RGB, b: RGB, t: number): RGB {
 
 // Gamma-correct colour mix: interpolate in LINEAR light, not 8-bit sRGB, so transitions
 // (warm→green, teal→blue) don't darken/mud through the midpoint. Used by the altitude ramp.
-function srgbToLin(c: number): number {
+export function srgbToLin(c: number): number {
   const s = c / 255;
   return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
 }
-function linToSrgb(l: number): number {
+export function linToSrgb(l: number): number {
   const s = l <= 0.0031308 ? l * 12.92 : 1.055 * Math.pow(l, 1 / 2.4) - 0.055;
   const v = Math.round(s * 255);
   return v < 0 ? 0 : v > 255 ? 255 : v;
