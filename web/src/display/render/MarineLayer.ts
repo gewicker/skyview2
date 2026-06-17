@@ -5,6 +5,7 @@
 // is a manual slider for now (real METAR-derived intensity + a precise water mask are follow-ups).
 import type { Layer, FrameContext } from "./types";
 import { sunAltitude } from "./sun";
+import { getMarineFog, startWeather } from "./weather";
 
 interface Blob { dLat: number; dLon: number; r: number; seed: number }
 
@@ -16,6 +17,7 @@ export class MarineLayer implements Layer {
   private nf = 0;
 
   constructor() {
+    startWeather(); // begin polling NWS conditions (keyless) to drive the fog intensity
     // A pool scattered over a westward band — toward Lake Washington, the lakes, and the Sound.
     for (let i = 0; i < 14; i++) {
       this.blobs.push({
@@ -43,8 +45,10 @@ export class MarineLayer implements Layer {
 
   draw(f: FrameContext): void {
     if (!f.cfg.showMarineLayer) return;
-    const intensity = f.cfg.marineLayerIntensity ?? 0.6;
-    if (intensity < 0.02) return;
+    const slider = f.cfg.marineLayerIntensity ?? 0.6;
+    if (slider < 0.02) return;
+    // Real conditions drive it: full slider when it's actually foggy, faint when clear.
+    const intensity = slider * (0.25 + 0.75 * getMarineFog());
     const wall = Date.now();
     if (wall - this.sunAt > 30000) {
       this.sunAt = wall;
