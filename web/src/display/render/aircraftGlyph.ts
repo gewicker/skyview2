@@ -89,7 +89,7 @@ export function shade(c: RGB, amt: number): RGB {
 // A soft baked contact shadow (no shadowBlur — three stacked offset ellipses), so airborne
 // glyphs read as floating above the map. Drawn FIRST so the body sits on top of it.
 function contactShadow(ctx: CanvasRenderingContext2D, s: number): void {
-  for (const [m, a] of [[1.18, 0.05], [1.05, 0.07], [1.0, 0.1]] as const) {
+  for (const [m, a] of [[1.18, 0.03], [1.05, 0.045], [1.0, 0.06]] as const) { // lighter — airborne has no real ground shadow; recover glyph contrast
     ctx.fillStyle = `rgba(0,0,0,${a})`;
     ctx.beginPath();
     ctx.ellipse(0.1 * s, 0.14 * s, 0.85 * s * m, 0.55 * s * m, 0, 0, Math.PI * 2);

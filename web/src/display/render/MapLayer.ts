@@ -175,9 +175,10 @@ export class MapLayer implements Layer {
     sx.fillStyle = glow;
     sx.fillRect(0, 0, w, h);
     sx.globalCompositeOperation = "source-over";
-    const vig = sx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.36, w / 2, h / 2, Math.hypot(w, h) * 0.6);
+    // Gentler vignette + wider clear center so corner traffic isn't penalized (was 0.36/0.5).
+    const vig = sx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.44, w / 2, h / 2, Math.hypot(w, h) * 0.62);
     vig.addColorStop(0, "rgba(0,0,0,0)");
-    vig.addColorStop(1, "rgba(0,0,0,0.5)");
+    vig.addColorStop(1, "rgba(0,0,0,0.36)");
     sx.fillStyle = vig;
     sx.fillRect(0, 0, w, h);
     sx.restore();

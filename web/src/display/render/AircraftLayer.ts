@@ -504,27 +504,21 @@ function drawLabels(ctx: CanvasRenderingContext2D, jobs: LabelJob[], f: FrameCon
       ctx.lineTo(j.ax, j.drawY);
       ctx.stroke();
     }
-    drawLabel(ctx, j.lines, j.ax, j.drawY, j.w - 8);
+    drawLabel(ctx, j.lines, j.ax, j.drawY);
   }
 }
 
-function drawLabel(ctx: CanvasRenderingContext2D, lines: string[], x: number, cy: number, maxW: number): void {
+function drawLabel(ctx: CanvasRenderingContext2D, lines: string[], x: number, cy: number): void {
   const n = lines.length;
   const top = cy - ((n - 1) * LINE_H) / 2;
-  // Soft translucent slate plate (not pure black) with a hairline border. The
-  // per-line dark outline below carries the contrast, so the box can stay light.
-  roundRect(ctx, x - 5, top - LINE_H / 2 - 2, maxW + 10, n * LINE_H + 4, 5);
-  ctx.fillStyle = "rgba(26,34,48,0.5)";
-  ctx.fill();
-  ctx.strokeStyle = "rgba(160,178,200,0.22)";
-  ctx.lineWidth = 1;
-  ctx.stroke();
+  // NO plate — an enclosing box reads as SELECTION (the house rule), and a column of plates on a
+  // busy arrival bank is exactly the clutter the ambient model avoids. A slightly heavier dark
+  // outline carries the contrast over bright imagery instead (no shadowBlur — too slow on the Pi).
   ctx.lineJoin = "round";
   for (let i = 0; i < n; i++) {
     const y = top + i * LINE_H;
-    // Cheap dark outline (no shadowBlur — too slow on the Pi) so text stays crisp.
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = "rgba(0,0,0,0.6)";
+    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = "rgba(0,0,0,0.72)";
     ctx.strokeText(lines[i], x, y);
     ctx.fillStyle = i === 0 ? "rgba(242,246,251,0.99)" : "rgba(208,217,228,0.93)";
     ctx.fillText(lines[i], x, y);
@@ -611,7 +605,7 @@ function lamp(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, c:
 // double-flash off the wingtips. Seeded per aircraft so the sky twinkles out of sync. `nf` is
 // the night factor (0 day → 1 night); colours run day+night and bloom brighter after dusk.
 function drawNavLights(ctx: CanvasRenderingContext2D, glyphS: number, a: LightAnchors, seed: number, t: number, nf: number): void {
-  const lvl = 0.5 + 0.5 * nf;
+  const lvl = 0.18 + 0.82 * nf; // steady lights nearly vanish by day (were 0.5 = sub-2px daytime noise), bloom at night
   const wx = a.wingX * glyphS, wy = a.wingY * glyphS;
   // Light dot radii SCALE with the glyph (was a constant 1.3px that vanished at small size and
   // never grew when zoomed in). lr ≈ a wingtip-lens size proportional to the airframe.
@@ -631,7 +625,7 @@ function drawNavLights(ctx: CanvasRenderingContext2D, glyphS: number, a: LightAn
   const ph = (t * 0.9 + seed) % 1;
   if (ph < 0.04 || (ph > 0.1 && ph < 0.14)) {
     const lead = ph < 0.012 || (ph > 0.1 && ph < 0.112);
-    const sbase = Math.max(2.0, glyphS * 0.2);
+    const sbase = Math.max(2.6, glyphS * 0.22); // flash floor enlarged so the double-flash is catchable across a room
     const sr = lead ? sbase * 1.25 : sbase;
     const sa = (lead ? 0.95 : 0.3 + 0.65 * nf).toFixed(3);
     lamp(ctx, -wx, wy, sr, `rgba(255,255,255,${sa})`);

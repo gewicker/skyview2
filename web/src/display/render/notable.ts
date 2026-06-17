@@ -27,7 +27,7 @@ export const NOTABLE_STYLE: Record<NotableCat, CatStyle> = {
   police: { color: [70, 132, 255], border: false, priority: 3, label: "POLICE", emblem: "shield" },
   military: { color: [124, 140, 80], border: false, priority: 2, label: "MILITARY", emblem: "chevron" },
   heavy: { color: [120, 180, 255], border: false, priority: 1, label: "HEAVY", emblem: "none" },
-  rare: { color: [255, 184, 72], border: false, priority: 1, label: "RARE", emblem: "none" },
+  rare: { color: [185, 150, 255], border: false, priority: 1, label: "RARE", emblem: "none" }, // violet — gold is reserved for HOME; collides with nothing else
 };
 
 const EMERGENCY = new Set(["7500", "7600", "7700"]);
