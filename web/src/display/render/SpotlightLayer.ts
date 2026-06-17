@@ -57,18 +57,11 @@ export class SpotlightLayer implements Layer {
     if (f.selectedHex) {
       const sel = f.aircraft.find((a) => a.hex === f.selectedHex);
       if (sel) {
-        const ctx = f.ctx;
         const p = f.cam.project(sel.lat, sel.lon);
-        const pulse = 0.5 + 0.5 * Math.sin(f.t * 3);
-        ctx.save();
-        ctx.strokeStyle = this.ring(0.45 + 0.4 * pulse);
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 18 + 4 * pulse, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
-        // The rich tap card (DOM) owns the details for a tapped aircraft; we only
-        // ring it here. The canvas placard is reserved for the auto-feature.
+        // "Locked target" indicator: two slowly-rotating cyan gimbal arcs + fixed gold notches
+        // at top/bottom — reads unmistakably as a tracked/selected object, not as clutter.
+        gimbalRing(f.ctx, p.x, p.y, f.t, [57, 194, 216], [255, 184, 92]);
+        // The rich tap card (DOM) owns the details for a tapped aircraft; we only ring it here.
         return;
       }
     }
@@ -107,26 +100,10 @@ export class SpotlightLayer implements Layer {
     const ctx = f.ctx;
     const p = f.cam.project(target.lat, target.lon);
 
-    // Bold "overhead" reticle: a thick pulsing ring + four crosshair ticks so the
-    // featured aircraft is unmistakable.
-    const pulse = 0.5 + 0.5 * Math.sin(f.t * 3);
-    const r = 18 + 4 * pulse;
-    ctx.save();
-    ctx.lineCap = "round";
-    ctx.strokeStyle = this.ring(0.62 + 0.32 * pulse);
-    ctx.lineWidth = 3.2;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.lineWidth = 2.4;
-    for (const deg of [0, 90, 180, 270]) {
-      const a = (deg * Math.PI) / 180;
-      ctx.beginPath();
-      ctx.moveTo(p.x + Math.cos(a) * (r + 2), p.y + Math.sin(a) * (r + 2));
-      ctx.lineTo(p.x + Math.cos(a) * (r + 8), p.y + Math.sin(a) * (r + 8));
-      ctx.stroke();
-    }
-    ctx.restore();
+    // Auto-featured (overhead) aircraft: the SAME "locked" gimbal language as a manual tap, but
+    // warm-dominant (gold arcs / cyan notches) so "I tapped this" and "this came overhead" read
+    // as one vocabulary, distinguished only by warmth.
+    gimbalRing(ctx, p.x, p.y, f.t, [176, 188, 142], [57, 194, 216]);
 
     // The dismiss applies to whoever is ACTUALLY featured this frame; suppress that card
     // until a different aircraft comes overhead (the reticle was already drawn above).
@@ -287,6 +264,38 @@ function bearingDeg(la1: number, lo1: number, la2: number, lo2: number): number 
 
 function compass(deg: number): string {
   return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(deg / 45) % 8];
+}
+
+// "Locked target" indicator: two opposing 110° arcs that slowly rotate (gimbal/targeting idiom),
+// with two fixed radial notches at top + bottom (screen space) as a steady anchor. Animated by
+// rotation + a faint brightness breath (NOT a size pulse) so it stays calm on an always-on
+// bedside screen. `arc`/`notch` are base RGB triples.
+function gimbalRing(ctx: CanvasRenderingContext2D, x: number, y: number, t: number, arc: [number, number, number], notch: [number, number, number]): void {
+  const R = 22, SPAN = (110 * Math.PI) / 180;
+  const theta = (t * 0.5) % (Math.PI * 2);
+  const breath = 0.82 + 0.18 * Math.sin(t * 1.9);
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.strokeStyle = `rgba(${arc[0]},${arc[1]},${arc[2]},${(0.78 * breath).toFixed(3)})`;
+  ctx.lineWidth = 2.6;
+  ctx.beginPath(); ctx.arc(x, y, R, theta, theta + SPAN); ctx.stroke();
+  ctx.beginPath(); ctx.arc(x, y, R, theta + Math.PI, theta + Math.PI + SPAN); ctx.stroke();
+  // Outer ghost arcs for depth.
+  ctx.strokeStyle = `rgba(${arc[0]},${arc[1]},${arc[2]},${(0.2 * breath).toFixed(3)})`;
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(x, y, R + 2.5, theta, theta + SPAN); ctx.stroke();
+  ctx.beginPath(); ctx.arc(x, y, R + 2.5, theta + Math.PI, theta + Math.PI + SPAN); ctx.stroke();
+  // Fixed gold notches at 12 + 6 o'clock (do not rotate) — the steady "acquired" anchor.
+  ctx.strokeStyle = `rgba(${notch[0]},${notch[1]},${notch[2]},0.9)`;
+  ctx.lineWidth = 2;
+  for (const ang of [-Math.PI / 2, Math.PI / 2]) {
+    const cx = Math.cos(ang), cy = Math.sin(ang);
+    ctx.beginPath();
+    ctx.moveTo(x + cx * (R + 1), y + cy * (R + 1));
+    ctx.lineTo(x + cx * (R + 5), y + cy * (R + 5));
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {

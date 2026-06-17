@@ -42,6 +42,13 @@ export class TrailLayer implements Layer {
       if (pts.length < 2) continue;
       const t0 = pts[0].t;
       const span = pts[pts.length - 1].t - t0 || 1;
+      // A bright crest flows head→tail along the trail, FASTER for faster aircraft — a second,
+      // pre-attentive speed channel and a sense of motion. Computed per-aircraft (cheap) and
+      // time-parameterized off f.t so it flows smoothly even if the frame rate dips.
+      const gs = a.gs ?? 120;
+      const flowRate = 0.25 + Math.min(1, gs / 420) * 0.85; // ~0.25 Hz slow → ~1.1 Hz fast
+      const WAVES = 2.2;
+      const glyphK = (f.cfg.glyphSizePx ?? 18) / 14;
       for (let i = 1; i < pts.length; i++) {
         const s0 = pts[i - 1], s1 = pts[i];
         const f01 = (s1.t - t0) / span; // 0 tail → 1 head
@@ -52,8 +59,15 @@ export class TrailLayer implements Layer {
         const p0 = f.cam.project(s0.lat, s0.lon);
         const p1 = f.cam.project(s1.lat, s1.lon);
         const taper = f01 * f01 * (3 - 2 * f01); // smoothstep tail→head
-        ctx.strokeStyle = `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},${((0.5 + 0.45 * boost) * taper).toFixed(3)})`;
-        ctx.lineWidth = (0.4 + 2.6 * taper * ((f.cfg.glyphSizePx ?? 18) / 14)) * (1 + 0.5 * boost);
+        let crest = 0.5 + 0.5 * Math.sin((f.t * flowRate - f01 * WAVES) * Math.PI * 2);
+        crest *= crest; // sharpen into a moving highlight band, not a sine wash
+        const isHead = i === pts.length - 1;
+        let alpha = (0.18 + 0.32 * boost) * taper * (0.6 + 0.7 * crest);
+        if (isHead) alpha = Math.max(alpha, 0.5 + 0.4 * boost); // newest bit always brightest
+        let w = (0.4 + 2.6 * taper * glyphK) * (1 + 0.5 * boost) * (1 + 0.18 * crest);
+        if (isHead) w *= 1.15;
+        ctx.strokeStyle = `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},${alpha.toFixed(3)})`;
+        ctx.lineWidth = w;
         ctx.beginPath();
         ctx.moveTo(p0.x, p0.y);
         ctx.lineTo(p1.x, p1.y);

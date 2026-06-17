@@ -226,8 +226,13 @@ export class AircraftLayer implements Layer {
           let w = 0;
           for (const l of lines) w = Math.max(w, measureLabel(ctx, l));
           const dist = (a.lat - f.cfg.centerLat) ** 2 + (a.lon - f.cfg.centerLon) ** 2;
+          // Place the card on the side AWAY from the screen centre, so a busy approach line
+          // (usually crossing the middle) gets cards fanned outward instead of stacked in one
+          // crowded column that buries the data.
+          const onRight = p.x > f.w * 0.5;
+          const ax = onRight ? p.x - glyphS - 8 - (w + 8) : p.x + glyphS + 8;
           jobs.push({
-            hex: a.hex, lines, ax: p.x + glyphS + 8, ay: p.y, drawY: p.y,
+            hex: a.hex, lines, ax, ay: p.y, drawY: p.y,
             w: w + 8, h: lines.length * LINE_H + 2, dist,
           });
         }
