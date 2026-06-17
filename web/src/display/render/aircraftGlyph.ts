@@ -79,7 +79,8 @@ const col = (c: RGB, a: number) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a
 
 // Lighten (+) toward white / darken (−) toward black IN LINEAR LIGHT, so the altitude HUE is
 // preserved (no desaturation to gray). amt in [−1..1]. The basis of the pseudo-3D shading.
-function shade(c: RGB, amt: number): RGB {
+// Exported so vessels + cars share the SAME shading function (one lighting world).
+export function shade(c: RGB, amt: number): RGB {
   const t = amt > 0 ? 255 : 0, k = Math.abs(amt);
   const mix = (x: number) => linToSrgb(srgbToLin(x) + (srgbToLin(t) - srgbToLin(x)) * k);
   return [mix(c[0]), mix(c[1]), mix(c[2])];
@@ -92,6 +93,20 @@ function contactShadow(ctx: CanvasRenderingContext2D, s: number): void {
     ctx.fillStyle = `rgba(0,0,0,${a})`;
     ctx.beginPath();
     ctx.ellipse(0.1 * s, 0.14 * s, 0.85 * s * m, 0.55 * s * m, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// The SAME soft contact-shadow recipe (3 stacked offset ellipses, identical alphas) but with
+// a per-family FOOTPRINT — so vessels (slim ellipse) and cars (small rounded footprint) seat
+// on their surface exactly the way aircraft float above the map. halfW/halfL are the glyph's
+// half-extents in its local frame; the shadow rides down-right (constant sun cue).
+export function softContactShadow(ctx: CanvasRenderingContext2D, halfW: number, halfL: number): void {
+  const o = 0.13 * Math.max(halfW, halfL);
+  for (const [m, a] of [[1.18, 0.05], [1.05, 0.07], [1.0, 0.1]] as const) {
+    ctx.fillStyle = `rgba(0,0,0,${a})`;
+    ctx.beginPath();
+    ctx.ellipse(o, o, halfW * m, halfL * m, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 }

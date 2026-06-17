@@ -7,10 +7,14 @@
 // the night dimming is applied globally by AtmosphereLayer. Off by default.
 import type { Layer, FrameContext } from "./types";
 import { LANES, lanePeriod, laneAt, type Lane } from "./vessels";
+import { shade, softContactShadow } from "./aircraftGlyph";
+import type { RGB } from "./colors";
 
-const HULL_L = 9;       // px, along course
+const HULL_L = 9;       // px, along course (bow at +x in glyph frame)
 const HULL_W = 3.5;     // px, beam
+const HULL: RGB = [120, 180, 205]; // steel cyan — the water family
 const MAX_FERRY_LABELS = 6;
+const col = (c: RGB, a: number) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 
 export class VesselLayer implements Layer {
   readonly name = "vessel";
@@ -61,42 +65,71 @@ export class VesselLayer implements Layer {
 
     ctx.save();
     ctx.translate(x, y);
-    ctx.rotate(ang);
+    ctx.rotate(ang); // bow (+x) points along travel
 
-    // Wake — short additive taper behind the stern, length tied to vessel class.
+    // Contact shadow — same recipe as aircraft/cars, hull footprint (long axis +x). Seats
+    // the hull on the water, rhyming with the plane's shadow on the ground.
+    softContactShadow(ctx, L / 2, W / 2);
+
+    // Wake — a faint additive bow-wave V (port + starboard divergence), length by class.
     const wake = (lane.ferry ? 16 : 12) * intensity;
     if (wake > 2) {
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
-      ctx.beginPath();
-      ctx.moveTo(-L / 2, 0);
-      ctx.lineTo(-L / 2 - wake, W * 0.45);
-      ctx.lineTo(-L / 2 - wake, -W * 0.45);
-      ctx.closePath();
-      ctx.fillStyle = `rgba(150,200,220,${(0.10 * intensity).toFixed(3)})`;
-      ctx.fill();
+      ctx.strokeStyle = `rgba(150,200,220,${(0.12 * intensity).toFixed(3)})`;
+      ctx.lineWidth = 0.8;
+      for (const sgn of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(-L / 2, sgn * W * 0.1);
+        ctx.lineTo(-L / 2 - wake, sgn * W * 0.55);
+        ctx.stroke();
+      }
       ctx.restore();
     }
 
-    // Hull — an elongated lozenge pointing along course (distinct from the aircraft chevron).
+    // Hull — elongated lozenge with the shared lateral top-left gradient (lit steel body),
+    // not a flat fill. Lateral axis is y (perpendicular to course).
+    ctx.save();
+    ctx.globalAlpha = hullA;
+    const g = ctx.createLinearGradient(0, -W / 2, 0, W / 2);
+    g.addColorStop(0, col(shade(HULL, -0.3), 1));
+    g.addColorStop(0.32, col(shade(HULL, 0.34), 1));
+    g.addColorStop(0.58, col(shade(HULL, 0.1), 1));
+    g.addColorStop(1, col(shade(HULL, -0.42), 1));
     ctx.beginPath();
     ctx.moveTo(L / 2, 0);     // bow
     ctx.lineTo(0, W / 2);     // port mid
     ctx.lineTo(-L / 2, 0);    // stern
     ctx.lineTo(0, -W / 2);    // starboard mid
     ctx.closePath();
-    ctx.fillStyle = `rgba(120,180,205,${hullA.toFixed(3)})`;
+    ctx.fillStyle = g;
     ctx.fill();
     ctx.lineWidth = 1;
     ctx.strokeStyle = "rgba(0,0,0,0.4)"; // dark edge keeps it legible inside fog
     ctx.stroke();
 
-    // Ferry bow light — warm dot so it reads as "the big boat" at a glance.
+    // Bridge superstructure — a bright painted block aft of midships: gives an unambiguous
+    // bow/stern read and the vessel's "windshield-band" equivalent.
+    ctx.fillStyle = col(shade(HULL, 0.5), 0.7);
+    roundRect(ctx, -L * 0.34, -W * 0.26, L * 0.22, W * 0.52, 0.6 * s);
+    ctx.fill();
+
+    // Specular glint (bridge highlight) — identical treatment to the aircraft crown.
+    ctx.fillStyle = col(shade(HULL, 0.82), 0.6);
+    ctx.beginPath();
+    ctx.arc(-L * 0.18, -W * 0.12, 0.16 * W + 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Ferry bow light — warm dot (the vessel's one warm accent, dimmer than any aircraft lamp).
     if (lane.ferry) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
       ctx.beginPath();
       ctx.arc(L / 2, 0, 1.6, 0, 6.283);
       ctx.fillStyle = "rgba(255,200,120,0.9)";
       ctx.fill();
+      ctx.restore();
     }
     ctx.restore();
 

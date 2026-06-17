@@ -209,7 +209,7 @@ func Default() Config {
 		LightsMode:           "auto",
 		MarineLayerIntensity: 0.6,
 		AmbientMode:          true,
-		RadarOpacity:         0.55,
+		RadarOpacity:         0.48, // a hair lower now the road-flow wash also lives on the ground plane
 		HighwayIntensity:     0.6,
 		VesselIntensity:      0.7,
 		MonitorMode:          "lightsout", LightsOutHour: 23, ShowCursor: false,
