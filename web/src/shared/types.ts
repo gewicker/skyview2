@@ -3,7 +3,7 @@
 // generate web/src/shared/generated/* from the Go source to replace this file.
 
 export type Skin = "ambient" | "map";
-export type MapStyle = "satellite" | "wire" | "dark";
+export type MapStyle = "satellite" | "wire";
 export type GridOverlay = "off" | "rings" | "grid";
 export type MonitorMode = "day" | "night" | "red" | "lightsout";
 export type TrailMode = "flat" | "altitude" | "climb";
@@ -35,7 +35,7 @@ export interface Config {
   showFinal: boolean; showTraffic: boolean; showHome: boolean; showHud: boolean;
   showRelative: boolean; highlightEmergency: boolean; showNotable: boolean;
   notableFlash: boolean; notableWebhook: string; showWinds: boolean; showPhotos: boolean;
-  showDestArc: boolean; showRouteDetail: boolean; burnInOrbit: boolean;
+  showDestArc: boolean; showRouteDetail: boolean; burnInOrbit: boolean; followSelected: boolean;
   showSpotlight: boolean; spotlightRadiusMi: number; spotlightLat: number; spotlightLon: number;
   showStars: boolean; showSun: boolean; showMoon: boolean; showSatellites: boolean;
   starMagLimit: number; skyTimeOffsetMin: number;

@@ -53,7 +53,7 @@ export default function Control({ config: c, surface, onChange, onPush, onReset,
         </ListRow>
         <ListRow label="Map style">
           <Segmented<MapStyle> value={c.mapStyle}
-            options={[{ value: "satellite", label: "Satellite" }, { value: "wire", label: "Wire" }, { value: "dark", label: "Dark" }]}
+            options={[{ value: "satellite", label: "Satellite" }, { value: "wire", label: "Wire" }]}
             onChange={(v) => set({ mapStyle: v })} />
         </ListRow>
         <ListRow label="Map up">
@@ -171,6 +171,7 @@ export default function Control({ config: c, surface, onChange, onPush, onReset,
 
       <ListSection title="Traffic & alerts">
         <ListRow label="Show traffic" first><Switch value={c.showTraffic} onChange={(v) => set({ showTraffic: v })} /></ListRow>
+        <ListRow label="Follow selected"><Switch value={c.followSelected} onChange={(v) => set({ followSelected: v })} /></ListRow>
         <ListRow label="Spotlight"><Switch value={c.showSpotlight} onChange={(v) => set({ showSpotlight: v })} /></ListRow>
         <ListRow label={`Trigger ring ${Math.round(c.spotlightRadiusMi * 0.8689)} NM`}><Slider value={c.spotlightRadiusMi} min={3} max={40} step={1} onChange={(v) => set({ spotlightRadiusMi: v })} /></ListRow>
         <ListRow label="Leader lines"><Switch value={c.showRelative} onChange={(v) => set({ showRelative: v })} /></ListRow>

@@ -184,7 +184,14 @@ export class Renderer {
     ctx.fillStyle = cfg.palette.bg;
     ctx.fillRect(0, 0, this.w, this.h);
 
-    const v = this.view();
+    let v = this.view();
+    // Follow mode: keep the tapped aircraft centered (center only — zoom level still adjusts).
+    // Uses last frame's resolved position (1-frame lag, imperceptible). Zoom works while
+    // following; pan yields to the follow, so to roam freely turn Follow off or deselect.
+    if (cfg.followSelected && this.selectedHex) {
+      const a = this.lastVisible.find((x) => x.hex === this.selectedHex);
+      if (a) v = { mapCenterLat: a.lat, mapCenterLon: a.lon, mapZoom: v.mapZoom };
+    }
     const cam = new Camera({
       centerLat: v.mapCenterLat, centerLon: v.mapCenterLon,
       zoom: this.zoomForMapZoom(v.mapZoom), rotationDeg: cfg.mapRotationDeg,

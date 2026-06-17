@@ -5,10 +5,11 @@
 // rather than a clutter of bright glyphs + labels.
 import type { Layer, FrameContext, Visible } from "./types";
 import type { Config } from "@shared/types";
-import { classifyGlyph, GLYPH_SCALE, drawGlyphSpinners, hasSpinners, lightAnchors, type LightAnchors } from "./aircraftGlyph";
+import { classifyGlyph, GLYPH_SCALE, drawGlyphStatic, drawGlyphSpinners, hasSpinners, lightAnchors, type LightAnchors, type GlyphKind } from "./aircraftGlyph";
 import { getGlyphSprite } from "./glyphCache";
 import { altRamp, hexRGB, type RGB } from "./colors";
 import { AIRPORTS } from "./airports";
+import { SEAPLANE_BASES } from "./seaplane";
 import { arrivalField } from "./ApproachLayer";
 import { sunAltitude } from "./sun";
 
@@ -130,7 +131,11 @@ export class AircraftLayer implements Layer {
 
     const jobs: LabelJob[] = [];
     for (const a of f.cfg.showTraffic === false ? [] : f.aircraft) {
-      const ground = !!a.onGround;
+      // On-ground when the feed says so, OR a near-stationary aircraft with no meaningful
+      // altitude — Boeing test/ferry flights (e.g. BOE123) often omit the on-ground flag, which
+      // left a 1-kt ramped jet drawn as an airborne silhouette.
+      const ground = !!a.onGround ||
+        (a.gs != null && a.gs < 4 && (a.altBaro == null || a.altBaro < 1200));
       const p = f.cam.project(a.lat, a.lon);
       const kind = classifyGlyph(a);
       const full = base * GLYPH_SCALE[kind] * zq;
@@ -161,13 +166,13 @@ export class AircraftLayer implements Layer {
       if (ground) {
         if (morphing && a.transitGround === true) {
           this.airborne(f, kind, rgb, glyphS, glowS, 1 - tp, seedFor(a.hex), 1 + 0.25 * (1 - tp));
-          drawGroundMarker(ctx, base, a.gs ?? 0, a.hex === f.selectedHex, tp, 0.6 + 0.4 * tp);
+          drawGroundMarker(ctx, kind, rgb, base, a.gs ?? 0, a.hex === f.selectedHex, tp, 0.6 + 0.4 * tp);
         } else {
-          drawGroundMarker(ctx, base, a.gs ?? 0, a.hex === f.selectedHex);
+          drawGroundMarker(ctx, kind, rgb, base, a.gs ?? 0, a.hex === f.selectedHex);
         }
       } else {
         if (morphing && a.transitGround === false) {
-          drawGroundMarker(ctx, base, a.gs ?? 0, a.hex === f.selectedHex, 1 - tp, 1);
+          drawGroundMarker(ctx, kind, rgb, base, a.gs ?? 0, a.hex === f.selectedHex, 1 - tp, 1);
           // Rotation/lift-off pop: grow in with a mid-morph scale overshoot.
           this.airborne(f, kind, rgb, glyphS, glowS, tp, seedFor(a.hex), 0.6 + 0.4 * tp + 0.2 * Math.sin(tp * Math.PI));
         } else {
@@ -255,7 +260,10 @@ export class AircraftLayer implements Layer {
       const age = a.transitAge;
       if (age == null || age < 0 || age >= FLOURISH_MS || a.transitLat == null || a.transitLon == null) continue;
       const q = f.cam.project(a.transitLat, a.transitLon);
-      drawFlourish(ctx, q.x, q.y, age / FLOURISH_MS, a.transitGround === true, ((a.track ?? 0) + (f.cfg.mapRotationDeg ?? 0)) * DEG);
+      const fk = classifyGlyph(a);
+      const mode: FlourishMode = fk === "helicopter" ? "heli"
+        : nearSeaplaneBase(a.transitLat, a.transitLon) ? "water" : "runway";
+      drawFlourish(ctx, q.x, q.y, age / FLOURISH_MS, a.transitGround === true, ((a.track ?? 0) + (f.cfg.mapRotationDeg ?? 0)) * DEG, mode);
     }
 
     // Home beacon (respects the Home toggle). Gold so it stands out from the cyan UI
@@ -321,13 +329,53 @@ export class AircraftLayer implements Layer {
   }
 }
 
-// One-time takeoff/landing flourish in screen space. Landing: a cool expanding ripple
-// (touchdown). Takeoff: a warm additive glow kick (liftoff). fp is 0→1 over FLOURISH_MS.
-function drawFlourish(ctx: CanvasRenderingContext2D, x: number, y: number, fp: number, landing: boolean, screenHdg: number): void {
+type FlourishMode = "runway" | "water" | "heli";
+
+// One-time takeoff/landing flourish in screen space, themed by how the aircraft operates:
+//  • runway — tire sparks/smoke (landing) or dust kick + warm liftoff flash (takeoff).
+//  • water  — cool-white SPRAY fan + V WAKE (floatplanes on the lakes).
+//  • heli   — rotor DOWNWASH rings (vertical ops; no runway roll/streak).
+// fp is 0→1 over FLOURISH_MS.
+function drawFlourish(ctx: CanvasRenderingContext2D, x: number, y: number, fp: number, landing: boolean, screenHdg: number, mode: FlourishMode = "runway"): void {
   const fx = Math.sin(screenHdg), fy = -Math.cos(screenHdg); // forward (nose) direction, screen
   const px = Math.cos(screenHdg), py = Math.sin(screenHdg);  // perpendicular (gear straddle)
   const gear = 7;
   ctx.save();
+  if (mode === "heli") {
+    // Rotor downwash: concentric ground rings pushed outward — same family for set-down/lift-off.
+    const e = 1 - (1 - fp) * (1 - fp);
+    for (let i = 0; i < 3; i++) {
+      const rr = 5 + i * 7 + e * 20;
+      const aa = (1 - fp) * (0.3 - i * 0.08);
+      if (aa <= 0) continue;
+      ctx.strokeStyle = `rgba(198,205,214,${aa.toFixed(3)})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(x, y, rr, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
+  if (mode === "water") {
+    // Floatplane: cool-white spray fan forward+outboard, then a V wake trailing aft.
+    const e = 1 - (1 - fp) * (1 - fp);
+    ctx.globalCompositeOperation = "lighter";
+    for (const sgn of [-1, 1]) {
+      const sx = x + fx * e * 8 + px * sgn * (4 + e * 9);
+      const sy = y + fy * e * 8 + py * sgn * (4 + e * 9);
+      ctx.fillStyle = `rgba(222,240,247,${((1 - fp) * 0.42).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(sx, sy, 2 + e * 7, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalCompositeOperation = "source-over";
+    for (const sgn of [-1, 1]) {
+      const wx = x - fx * (6 + e * 16) + px * sgn * (2 + e * 12);
+      const wy = y - fy * (6 + e * 16) + py * sgn * (2 + e * 12);
+      ctx.strokeStyle = `rgba(180,212,224,${((1 - fp) * 0.3).toFixed(3)})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(wx, wy); ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
   if (landing) {
     // Touchdown sparks at the two main gear — a bright cool-white hit, fires first, fast decay.
     const tp = fp / 0.18;
@@ -374,6 +422,16 @@ function drawFlourish(ctx: CanvasRenderingContext2D, x: number, y: number, fp: n
     ctx.globalCompositeOperation = "source-over";
   }
   ctx.restore();
+}
+
+// A transit (takeoff/landing) within ~1.3 mi of a seaplane base counts as a WATER op — used
+// to theme the flourish (spray/wake) for floatplanes operating on the lakes.
+function nearSeaplaneBase(lat: number, lon: number): boolean {
+  for (const b of SEAPLANE_BASES) {
+    const d = Math.hypot((lat - b.lat) * 69, (lon - b.lon) * 69 * Math.cos(b.lat * DEG));
+    if (d < 1.3) return true;
+  }
+  return false;
 }
 
 interface LabelJob {
@@ -515,44 +573,34 @@ function labelLines(a: Visible, cfg: Config): string[] {
   return lines;
 }
 
-// Ground traffic marker, drawn in the already-rotated frame so "up" (−y) is the
-// aircraft's track. A taxiing aircraft gets a crisp directional chevron; a parked one
-// (≈stationary) a small dot. Muted amber + a thin dark edge keeps each one legible on
-// the bright apron without the old additive-glow blob.
-function drawGroundMarker(ctx: CanvasRenderingContext2D, base: number, gs: number, sel: boolean, fade = 1, scale = 1): void {
-  const fill = sel ? "rgba(255,201,120,0.98)" : "rgba(212,150,86,0.95)";
+// Ground traffic marker, drawn in the already-rotated frame so "up" (−y) is the aircraft's
+// track. A TAXIING aircraft now gets a compact top-view SILHOUETTE (higher fidelity than the
+// old chevron) sized by its kind and oriented along travel; a PARKED one (≈stationary) stays a
+// small dot so a dense ramp doesn't mush. Muted (GROUND_RGB) + a thin dark edge for legibility.
+function drawGroundMarker(ctx: CanvasRenderingContext2D, kind: GlyphKind, rgb: RGB, base: number, gs: number, sel: boolean, fade = 1, scale = 1): void {
   const b = base * scale;
   ctx.save();
   if (fade < 1) ctx.globalAlpha = fade;
   ctx.lineJoin = "round";
   if (gs >= 3) {
-    const r = Math.max(4.5, b * 0.42), w = r * 0.7;
-    ctx.beginPath();
-    ctx.moveTo(0, -r);
-    ctx.lineTo(w, r * 0.72);
-    ctx.lineTo(0, r * 0.28);
-    ctx.lineTo(-w, r * 0.72);
-    ctx.closePath();
-    ctx.strokeStyle = "rgba(0,0,0,0.45)";
-    ctx.lineWidth = 1.4;
-    ctx.stroke();
-    ctx.fillStyle = fill;
-    ctx.fill();
+    // Compact top-view silhouette, sized by kind, oriented along travel (ctx already rotated).
+    const s = Math.max(5, b * 0.5 * GLYPH_SCALE[kind]);
+    drawGlyphStatic(ctx, kind, s, rgb, 0.96);
   } else {
-    const r = Math.max(2.4, b * 0.22);
+    const r = Math.max(2.2, b * 0.2);
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.strokeStyle = "rgba(0,0,0,0.4)";
-    ctx.lineWidth = 1.2;
+    ctx.lineWidth = 1.1;
     ctx.stroke();
-    ctx.fillStyle = fill;
+    ctx.fillStyle = `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},0.95)`;
     ctx.fill();
   }
   if (sel) {
     ctx.strokeStyle = "rgba(255,210,120,0.9)";
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.arc(0, 0, (gs >= 3 ? b * 0.42 : b * 0.22) + 5, 0, Math.PI * 2);
+    ctx.arc(0, 0, (gs >= 3 ? b * 0.5 : b * 0.2) + 6, 0, Math.PI * 2);
     ctx.stroke();
   }
   ctx.restore();

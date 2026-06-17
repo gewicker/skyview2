@@ -8,7 +8,7 @@ export class PlaceLabelsLayer implements Layer {
   readonly name = "places";
 
   draw(f: FrameContext): void {
-    if (f.cfg.skin !== "map" || f.cfg.mapStyle === "dark") return;
+    if (f.cfg.skin !== "map") return;
     const ctx = f.ctx;
     ctx.save();
     ctx.textAlign = "center";

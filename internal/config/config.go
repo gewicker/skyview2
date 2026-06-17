@@ -22,7 +22,7 @@ type MapStyle string
 const (
 	StyleSatellite MapStyle = "satellite"
 	StyleWire      MapStyle = "wire"
-	StyleDark      MapStyle = "dark"
+	// "dark" was removed (#138); legacy configs migrate to satellite on load (see store).
 )
 
 // GridOverlay draws radar range-rings, a square distance grid, or nothing.
@@ -135,6 +135,7 @@ type Config struct {
 	ShowWinds         bool   `json:"showWinds"`
 	ShowPhotos        bool   `json:"showPhotos"`
 	BurnInOrbit       bool   `json:"burnInOrbit"`
+	FollowSelected    bool   `json:"followSelected"` // camera tracks the tapped aircraft
 
 	// Marine layer (coastal fog) — off by default; intensity is a manual 0..1 for now.
 	ShowMarineLayer      bool    `json:"showMarineLayer"`

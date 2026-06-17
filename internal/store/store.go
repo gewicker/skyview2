@@ -31,6 +31,9 @@ func NewConfig(path string) *Config {
 	if b, err := os.ReadFile(path); err == nil {
 		_ = json.Unmarshal(b, &c.cfg) // partial/older files merge onto defaults
 		migrateHome(&c.cfg)
+		if c.cfg.MapStyle == "dark" { // deprecated map style (#138) → satellite
+			c.cfg.MapStyle = config.StyleSatellite
+		}
 	}
 	return c
 }

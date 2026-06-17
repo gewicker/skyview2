@@ -5,8 +5,14 @@
 // ones rendered onto the far shore, so the anchor (the standard water-aerodrome symbol) stands alone.
 import type { Layer, FrameContext } from "./types";
 import { SEAPLANE_BASES, type SeaplaneBase, type DockMark } from "./seaplane";
+import { sunAltitude } from "./sun";
 
 const SHOW_MARKS_PXMI = 80;                  // fine shore detail only when zoomed into the lake
+// Day→night factor (0 day → 1 night), matching the aircraft/runway-light curve, for dock embers.
+const nightFactor = (sunAltDeg: number): number => {
+  const f = (3 - sunAltDeg) / 9;
+  return f < 0 ? 0 : f > 1 ? 1 : f;
+};
 
 export class SeaplaneLayer implements Layer {
   readonly name = "seaplane";
@@ -18,17 +24,30 @@ export class SeaplaneLayer implements Layer {
     const h1 = f.cam.project(f.cfg.centerLat + 1 / 69, f.cfg.centerLon);
     const pxPerMile = Math.hypot(h1.x - h0.x, h1.y - h0.y) || 1;
 
+    const nf = nightFactor(sunAltitude(f.cfg.centerLat, f.cfg.centerLon, new Date(Date.now() + (f.cfg.skyTimeOffsetMin || 0) * 60000)));
     ctx.save();
     ctx.lineCap = "butt";
     for (const base of SEAPLANE_BASES) {
-      if (pxPerMile > SHOW_MARKS_PXMI) for (const m of base.marks) this.drawMark(f, m);
+      if (pxPerMile > SHOW_MARKS_PXMI) for (const m of base.marks) this.drawMark(f, m, nf);
       this.drawAnchor(f, base);
     }
     ctx.restore();
   }
 
-  private drawMark(f: FrameContext, m: DockMark): void {
+  private drawMark(f: FrameContext, m: DockMark, nf: number): void {
     const ctx = f.ctx;
+    // Night dock "ember": a small warm additive glow at the dock/ramp/terminal, fading in at dusk.
+    if (nf > 0.05) {
+      const e = f.cam.project(m.p[0], m.p[1]);
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const g = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, 7);
+      g.addColorStop(0, `rgba(255,190,110,${(0.5 * nf).toFixed(3)})`);
+      g.addColorStop(1, "rgba(255,170,90,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(e.x, e.y, 7, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
     ctx.setLineDash([]);
     if (m.kind === "terminal") {
       // Small filled block in the airport-diagram "building" palette.
