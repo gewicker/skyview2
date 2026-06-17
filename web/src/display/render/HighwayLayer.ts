@@ -100,10 +100,14 @@ export class HighwayLayer implements Layer {
       const pts = this.project(f, seg);
       if (pts.length < 2 || !this.onScreen(pts, w, h)) return;
       const cong = this.segCong(hw, si);
-      if (cong < FLOOR) return; // free-flow recedes into the map
+      // Smooth fade near the floor (NOT a hard cutoff) so a segment whose congestion drifts
+      // across the threshold — or whose sensor flips to NoData between polls — dims in/out
+      // gently instead of popping on and off. Clear road still recedes to ~nothing.
+      const vis = smooth01(FLOOR, FLOOR + 0.14, cong);
+      if (vis <= 0.002) return;
       const c = desatRGB(congRamp(cong), this.desat);
       const width = (1.2 + 3.3 * cong * cong) * this.widthMul; // squared → only bad stretches fatten
-      const aCore = (0.1 + 0.45 * cong) * im;
+      const aCore = (0.12 + 0.43 * cong) * im * vis;
       // Soft glow under-stroke (wider, low alpha) so jams bloom off the dark map — no shadowBlur.
       ctx.setLineDash([]);
       ctx.lineWidth = width * 2;

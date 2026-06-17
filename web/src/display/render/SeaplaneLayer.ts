@@ -13,6 +13,12 @@ const LANE_EDGE = "rgba(150,205,225,0.42)";  // dashed advisory edge
 const LANE_CTR = "rgba(150,205,225,0.30)";   // dotted centerline
 const LANE_DIR = "rgba(150,205,225,0.55)";   // end direction chevron
 const SHOW_MARKS_PXMI = 80;                  // fine shore detail only when zoomed into the lake
+const LANES_PXMI = 45;                        // water lanes fade in only when zoomed into the lake;
+                                             // the ambient view is the clean anchor symbol alone
+const smooth01 = (a: number, b: number, x: number) => {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
 
 export class SeaplaneLayer implements Layer {
   readonly name = "seaplane";
@@ -24,10 +30,18 @@ export class SeaplaneLayer implements Layer {
     const h1 = f.cam.project(f.cfg.centerLat + 1 / 69, f.cfg.centerLon);
     const pxPerMile = Math.hypot(h1.x - h0.x, h1.y - h0.y) || 1;
 
+    // Lanes are zoom-gated: the sprawling water corridors clutter the ambient view, so they
+    // fade in only once you zoom into the lake. The anchor (the actual chart symbol) is always on.
+    const laneVis = smooth01(LANES_PXMI, LANES_PXMI + 25, pxPerMile);
     ctx.save();
     ctx.lineCap = "butt";
     for (const base of SEAPLANE_BASES) {
-      this.drawLanes(f, base, pxPerMile);
+      if (laneVis > 0.01) {
+        ctx.save();
+        ctx.globalAlpha = laneVis;
+        this.drawLanes(f, base, pxPerMile);
+        ctx.restore();
+      }
       if (pxPerMile > SHOW_MARKS_PXMI) for (const m of base.marks) this.drawMark(f, m);
       this.drawAnchor(f, base);
     }
@@ -45,7 +59,7 @@ export class SeaplaneLayer implements Layer {
       const len = Math.hypot(dx, dy) || 1;
       const ux = dx / len, uy = dy / len;
       const nx = -uy, ny = ux;
-      const halfW = Math.max(2, (lane.widthFt / 5280) * pxPerMile / 2);
+      const halfW = Math.min(34, Math.max(2, (lane.widthFt / 5280) * pxPerMile / 2)); // capped so it never sprawls
 
       // Translucent corridor (source-over, low alpha — NOT additive).
       ctx.beginPath();
