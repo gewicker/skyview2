@@ -398,7 +398,7 @@ function TapCard({ a, cfg, onClose }: { a: Aircraft; cfg: Config; onClose: () =>
       distRemNm = Math.round(remMi * 0.8689);
       if (a.gs != null && a.gs > 40) {
         const dd = new Date(Date.now() + ((remMi * 0.8689) / a.gs) * 3600 * 1000);
-        eta = `${pad2(dd.getHours())}:${pad2(dd.getMinutes())}`;
+        eta = `${String(dd.getHours()).padStart(2, "0")}:${String(dd.getMinutes()).padStart(2, "0")}`;
       }
       if (ends.from.lat != null && ends.from.lon != null) {
         const total = haversine(ends.from.lat, ends.from.lon, ends.to.lat, ends.to.lon);
