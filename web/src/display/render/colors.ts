@@ -56,16 +56,18 @@ function mixSrgb(a: RGB, b: RGB, t: number): RGB {
   return [mix(a[0], b[0]), mix(a[1], b[1]), mix(a[2], b[2])];
 }
 
-// Continuous congestion ramp — free-flow cool teal → jam desaturated terracotta (NOT a
-// fire-engine red; bedside-calm). Drives BOTH the per-car body tint and the scrolling
-// road-flow wash, so the two read as the same data. Same gamma-correct linear-light mix as
-// the altitude ramp so midtones stay clean (no muddy green→amber).
+// Congestion ramp — re-anchored for glance-legibility on the dark teal/navy satellite map.
+// The old ramp started TEAL (the map/water's own hue) so "clear" camouflaged itself and the
+// network muddied to tan. Now it climbs COOL-DIM → HOT-BRIGHT: clear = dim cool slate that
+// recedes into the navy; the cool→warm crossover at ~0.6 is the key glance edge; jam = hot
+// magenta-red (a hue the map never uses) so jams pop. Designed to read as 3–4 discrete bands
+// from across a room, not a continuous mush. Gamma-correct linear-light mix as before.
 const CONG_STOPS: [number, RGB][] = [
-  [0.0, [63, 168, 140]],    // free-flow teal
-  [0.3, [111, 192, 138]],   // light green
-  [0.55, [201, 192, 106]],  // filling, sand
-  [0.78, [224, 162, 88]],   // heavy amber
-  [1.0, [217, 120, 90]],    // jam — desaturated terracotta
+  [0.0, [90, 105, 120]],    // clear — dim cool slate (recedes into the map)
+  [0.35, [120, 150, 170]],  // light — pale steel
+  [0.6, [230, 170, 70]],    // slow — amber (cool→warm crossover: the first alarm)
+  [0.8, [235, 120, 60]],    // heavy — orange
+  [1.0, [240, 75, 95]],     // jam — hot magenta-red
 ];
 
 export function congRamp(t: number): RGB {

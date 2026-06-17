@@ -9,6 +9,7 @@ import { classifyGlyph, GLYPH_SCALE, drawGlyphSpinners, hasSpinners, lightAnchor
 import { getGlyphSprite } from "./glyphCache";
 import { altRamp, hexRGB, type RGB } from "./colors";
 import { AIRPORTS } from "./airports";
+import { arrivalField } from "./ApproachLayer";
 import { sunAltitude } from "./sun";
 
 // Time-of-day night factor (0 in daylight → 1 at full night), smooth through twilight.
@@ -58,13 +59,13 @@ function nearestLocalField(a: Visible, maxMi: number): string | null {
   return best <= maxMi ? iata : null; // statute miles
 }
 
-// Low + clearly descending + close to a local field ⇒ physically landing there.
+// Physically landing at a local field ⇒ established on its final by glidepath/alignment
+// physics (shared with the approach tag), NOT nearest-centroid. So a SEA arrival reads
+// "→ SEA" instead of "→ BFI" (Boeing Field sits under SEA's north approach), and a plane
+// merely transiting low near a field no longer gets a false destination.
 function arrivingLocal(a: Visible): string | null {
-  if (a.onGround || a.altBaro == null || a.altBaro > 5500) return null;
-  // Reject only if we KNOW it's not descending; a null vertical rate (common on the feed) no
-  // longer suppresses the approach tag/landing light for a low aircraft near a field.
-  if (a.baroRate != null && a.baroRate > -150) return null;
-  return nearestLocalField(a, 8);
+  const m = arrivalField(a);
+  return m ? m.iata : null;
 }
 
 // Low + clearly climbing + close to a local field ⇒ just departed there. Used only to

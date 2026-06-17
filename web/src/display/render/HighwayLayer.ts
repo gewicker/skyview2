@@ -14,12 +14,21 @@ import { startTraffic, tickTraffic, liveCong, desatAmount } from "./traffic";
 
 const SPACING = 22;     // base px between cars (modulated tighter by congestion)
 const CAR_CAP = 90;     // hard cap on cars drawn per frame (Pi budget)
+const FLOOR = 0.12;     // below this congestion a segment draws nothing (clear road recedes)
+const CARS_MIN = 48;    // px-per-mile where cars begin fading in (street zoom); tune on the panel
+const CARS_FULL = 72;   // px-per-mile where cars are fully shown
 const col = (c: readonly number[], a: number) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+const smooth01 = (a: number, b: number, x: number) => {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
 
 export class HighwayLayer implements Layer {
   readonly name = "highway";
   private pts: { x: number; y: number }[] = [];
-  private desat = 0; // ambient "modelled not live" tell, set per frame
+  private desat = 0;     // ambient "modelled not live" tell, set per frame
+  private widthMul = 1;  // ribbon width grows mildly with zoom
+  private carsVis = 0;   // 0 at metro zoom … 1 at street zoom (cars fade in)
 
   constructor() {
     startTraffic(); // begin polling the backend WSDOT proxy (no key on server = no-op data)
@@ -31,19 +40,29 @@ export class HighwayLayer implements Layer {
     if (intensity < 0.02) return;
     tickTraffic(f.dt); // ease live congestion toward the latest poll's targets
     this.desat = desatAmount();
+    // Zoom-aware encoding: measure px-per-mile (one extra projection). Ribbon width grows mildly
+    // with zoom; cars only appear once zoomed into street level where they're big enough to read.
+    const p0 = f.cam.project(f.view.mapCenterLat, f.view.mapCenterLon);
+    const p1 = f.cam.project(f.view.mapCenterLat + 1 / 69, f.view.mapCenterLon);
+    const pxPerMile = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 12;
+    this.widthMul = Math.max(0.8, Math.min(3, Math.sqrt(pxPerMile / 12)));
+    this.carsVis = smooth01(CARS_MIN, CARS_FULL, pxPerMile);
     const ctx = f.ctx;
-    const carAlpha = 0.7 * intensity; // effective body peak ≈ 0.42 at default intensity
     let budget = CAR_CAP;
 
     ctx.save();
     ctx.globalCompositeOperation = "source-over";
     ctx.lineCap = "round";
-    // Pass 1: the flow wash on every road (under the cars).
+    ctx.lineJoin = "round";
+    // The flow ribbon is the primary congestion carrier at every zoom.
     for (const hw of HIGHWAYS) this.drawFlow(f, hw, intensity);
-    // Pass 2: the cars on top.
-    for (const hw of HIGHWAYS) {
-      if (budget <= 0) break;
-      budget = this.drawCars(f, hw, carAlpha, budget);
+    // Cars: street-zoom detail only — sub-perceptual at metro zoom, so faded in by carsVis.
+    if (this.carsVis > 0.01) {
+      const carAlpha = 0.7 * intensity * this.carsVis;
+      for (const hw of HIGHWAYS) {
+        if (budget <= 0) break;
+        budget = this.drawCars(f, hw, carAlpha, budget);
+      }
     }
     ctx.restore();
   }
@@ -71,24 +90,36 @@ export class HighwayLayer implements Layer {
     return false;
   }
 
+  // The congestion ribbon: ONE redundant-encoded carrier. Congestion drives hue (ramp), WIDTH,
+  // GLOW, dash-density and scroll-speed together, so it reads from across the room via any
+  // channel. Clear road (cong < FLOOR) draws nothing — jams stand alone. No base track.
   private drawFlow(f: FrameContext, hw: Highway, intensity: number): void {
     const ctx = f.ctx, w = f.w, h = f.h;
+    const im = 0.6 + 0.6 * intensity;
     hw.segments.forEach((seg, si) => {
       const pts = this.project(f, seg);
       if (pts.length < 2 || !this.onScreen(pts, w, h)) return;
       const cong = this.segCong(hw, si);
-      const speed = 26 - 22 * cong;
-      // Faint base track so an empty road still orients.
+      if (cong < FLOOR) return; // free-flow recedes into the map
+      const c = desatRGB(congRamp(cong), this.desat);
+      const width = (1.2 + 3.3 * cong * cong) * this.widthMul; // squared → only bad stretches fatten
+      const aCore = (0.1 + 0.45 * cong) * im;
+      // Soft glow under-stroke (wider, low alpha) so jams bloom off the dark map — no shadowBlur.
       ctx.setLineDash([]);
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = "rgba(120,130,150,0.14)";
+      ctx.lineWidth = width * 2;
+      ctx.strokeStyle = col(c, aCore * 0.25);
       this.stroke(ctx, pts);
-      // Congestion-tinted flow dash, scrolling along travel at the local speed. Desaturated
-      // a touch when running on the model (feed stale/down) — the ambient live-vs-modelled tell.
-      ctx.lineWidth = 2.4;
-      ctx.strokeStyle = col(desatRGB(congRamp(cong), this.desat), 0.22 * (0.6 + 0.6 * intensity));
-      ctx.setLineDash([6, 10]);
-      ctx.lineDashOffset = -((f.t * speed) % 16);
+      // Core stroke. Warm/congested segments get a scrolling dash (denser when jammed) so motion
+      // and "look here" read at a glance; cool segments stay solid (dashes on clear road = noise).
+      ctx.lineWidth = width;
+      ctx.strokeStyle = col(c, aCore);
+      if (cong > 0.5) {
+        const dash: [number, number] = cong > 0.8 ? [3, 5] : [4, 12];
+        ctx.setLineDash(dash);
+        ctx.lineDashOffset = -((f.t * (26 - 22 * cong)) % (dash[0] + dash[1]));
+      } else {
+        ctx.setLineDash([]);
+      }
       this.stroke(ctx, pts);
     });
     ctx.setLineDash([]);

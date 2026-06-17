@@ -2,7 +2,7 @@
 // local runway (KSEA/KBFI/KRNT) — laterally aligned, tracking the course, low and
 // inbound — and tag them with the runway they're lined up for. You're right under
 // the Sea-Tac flows, so this is the high-signal overlay.
-import type { Layer, FrameContext, Visible } from "./types";
+import type { Layer, FrameContext } from "./types";
 import { AIRPORTS } from "./airports";
 
 const DEG = Math.PI / 180;
@@ -94,7 +94,24 @@ export class ApproachLayer implements Layer {
   }
 }
 
-interface Match { icao: string; ident: string; miles: number }
+export interface Match { iata: string; icao: string; ident: string; miles: number }
+
+// What a candidate arrival needs to expose — a structural subset so this works for both the
+// renderer's Visible and the route-card's Aircraft.
+export type ArrivalInput = {
+  lat?: number | null; lon?: number | null; altBaro?: number | null;
+  track?: number | null; destination?: string; onGround?: boolean;
+};
+
+// PUBLIC AUTHORITY for a local "→ DEST": the field an aircraft is physically established on
+// final to, by glidepath + lateral-alignment physics. Replaces the old nearest-centroid test,
+// which mislabels SEA arrivals as BFI (the fields sit ~4 mi apart and SEA's north approach
+// passes right over Boeing Field). Returns null unless genuinely on a runway's final.
+export function arrivalField(a: ArrivalInput): Match | null {
+  if (a.onGround) return null;
+  if (a.altBaro != null && a.altBaro > 6000) return null;
+  return match(a);
+}
 
 // Pick the runway an aircraft is actually on final to. Lateral alignment qualifies a
 // candidate; the DEFINITIVE separation between near/far collinear runways (BFI 14R vs
@@ -102,7 +119,8 @@ interface Match { icao: string; ident: string; miles: number }
 // arrival is far lower than the far-field one. We score each candidate by how close the
 // aircraft's altitude is to that runway's 3° glidepath, then let a known local
 // destination act only as a gentle tiebreak (never override the physics).
-function match(a: Visible): Match | null {
+function match(a: ArrivalInput): Match | null {
+  if (a.lat == null || a.lon == null) return null;
   let best: Match | null = null;
   let bestScore = Infinity;
   const destLocal = a.destination && LOCAL_IATA.has(a.destination) ? a.destination : null;
@@ -139,7 +157,7 @@ function match(a: Visible): Match | null {
     }
     if (destLocal && e.iata === destLocal) score *= 0.6; // gentle prior toward stated dest
 
-    if (score < bestScore) { bestScore = score; best = { icao: e.icao, ident: e.ident, miles }; }
+    if (score < bestScore) { bestScore = score; best = { iata: e.iata, icao: e.icao, ident: e.ident, miles }; }
   }
   return best;
 }

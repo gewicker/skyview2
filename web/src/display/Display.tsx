@@ -9,7 +9,7 @@ import { SeaplaneLayer } from "./render/SeaplaneLayer";
 import { SeaplaneApproachLayer } from "./render/SeaplaneApproachLayer";
 import { StaticOverlayLayer } from "./render/StaticOverlayLayer";
 import { NightLightsLayer } from "./render/NightLightsLayer";
-import { ApproachLayer } from "./render/ApproachLayer";
+import { ApproachLayer, arrivalField } from "./render/ApproachLayer";
 import { ProcedureLayer } from "./render/ProcedureLayer";
 import { NavaidLayer } from "./render/NavaidLayer";
 import { PlaceLabelsLayer } from "./render/PlaceLabelsLayer";
@@ -558,21 +558,18 @@ function routeEnds(a: Aircraft): { from: RouteEnd; to: RouteEnd } | null {
   return { from, to };
 }
 
-// The local field an aircraft is physically landing at (low, descending, within ~8 mi of its
-// runway centroid), mirroring the on-screen "→ SEA" label logic. null if not arriving locally.
+// The local field an aircraft is physically landing at — the SAME approach-physics authority
+// the on-screen "→ SEA" tag uses (glidepath + alignment), not nearest-centroid. This keeps the
+// card's destination consistent with the tag (a SEA arrival no longer reads "→ BFI"). null if
+// not established on a local final.
 function localArrival(a: Aircraft): { code: string; name: string; lat: number; lon: number } | null {
-  if (a.onGround || a.altBaro == null || a.altBaro > 6000 || a.lat == null || a.lon == null) return null;
-  if (a.baroRate != null && a.baroRate > -150) return null; // must be descending (or unknown)
-  let best = Infinity;
-  let hit: { code: string; name: string; lat: number; lon: number } | null = null;
-  for (const ap of AIRPORTS) {
-    let la = 0, lo = 0, n = 0;
-    for (const rw of ap.runways) { la += rw.le[0] + rw.he[0]; lo += rw.le[1] + rw.he[1]; n += 2; }
-    const flat = la / n, flon = lo / n;
-    const d = Math.hypot((a.lat - flat) * 69, (a.lon - flon) * 69 * Math.cos(flat * Math.PI / 180));
-    if (d < best) { best = d; hit = { code: ap.iata, name: ap.name, lat: flat, lon: flon }; }
-  }
-  return best <= 8 ? hit : null;
+  const m = arrivalField(a);
+  if (!m) return null;
+  const ap = AIRPORTS.find((x) => x.iata === m.iata);
+  if (!ap) return null;
+  let la = 0, lo = 0, n = 0;
+  for (const rw of ap.runways) { la += rw.le[0] + rw.he[0]; lo += rw.le[1] + rw.he[1]; n += 2; }
+  return { code: ap.iata, name: ap.name, lat: la / n, lon: lo / n };
 }
 function angDiff(x: number, y: number): number {
   return Math.abs(((x - y + 540) % 360) - 180);
