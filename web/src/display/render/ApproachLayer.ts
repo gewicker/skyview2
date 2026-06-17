@@ -116,8 +116,9 @@ function match(a: Visible): Match | null {
     const along = east * ux + north * uy; // +ve past threshold; approach side is −ve
     const dist = -along; // metres before the threshold
     if (dist < 300 || dist > 12 * MI) continue;
-    const latOff = Math.abs(east * uy - north * ux); // lateral offset
+    const latOff = Math.abs(east * uy - north * ux); // lateral offset (metres) from this centerline
     if (latOff > 0.7 * MI) continue;
+    const latPenaltyFt = latOff * 3.28084; // metres → ft, so it combines with the glidepath altErr below
     // Heading must be flying the course (within ~28°).
     if (a.track != null) {
       const d = Math.abs(((a.track - e.course + 540) % 360) - 180);
@@ -125,15 +126,18 @@ function match(a: Visible): Match | null {
     }
     const miles = dist / MI;
 
-    // Glidepath fit: expected altitude on a 3° path at this distance vs the real one.
+    // Score = glidepath fit + lateral alignment. The glidepath (altitude vs 3° path) separates
+    // collinear near/far fields (BFI 14R vs SEA 16R); the lateral penalty separates the PARALLEL
+    // runways that share a glidepath (SEA 34R/34C/34L) — the aircraft is matched to the parallel
+    // whose extended centerline it's actually flying, not just the first one in the list.
     let score: number;
     if (a.altBaro != null) {
       const gpAlt = e.elevFt + miles * GP_FT_PER_NM;
       const altErr = Math.abs(a.altBaro - gpAlt);
       if (altErr > GP_TOL_FT) continue; // not on THIS runway's glidepath — rule it out
-      score = altErr;
+      score = altErr + latPenaltyFt;
     } else {
-      score = miles * GP_FT_PER_NM; // no altitude: fall back to "nearest threshold"
+      score = miles * GP_FT_PER_NM + latPenaltyFt; // no altitude: nearest-threshold + alignment
     }
     if (destLocal && e.iata === destLocal) score *= 0.6; // gentle prior toward stated dest
 
