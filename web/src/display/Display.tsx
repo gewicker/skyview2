@@ -426,9 +426,9 @@ function TapCard({ a, cfg, onClose }: { a: Aircraft; cfg: Config; onClose: () =>
           background: "rgba(0,0,0,0.4)", color: "rgba(225,232,240,0.9)", width: 26, height: 26, borderRadius: "50%", cursor: "pointer", font: "14px system-ui" }}>✕</button>
       </div>
       <div style={{ overflow: "auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", padding: "0 16px 14px", marginTop: -44 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", padding: "13px 16px 14px" }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ font: "700 28px system-ui", letterSpacing: -0.2, color: C.primary, lineHeight: 1 }}>{callsign}</div>
+            <div style={{ font: "700 26px system-ui", letterSpacing: -0.2, color: C.primary, lineHeight: 1.05 }}>{callsign}</div>
             {a.airline && <div style={{ font: "500 14px system-ui", color: C.secondary, marginTop: 3 }}>{a.airline}</div>}
             {(a.typeName || a.typeCode) && <div style={{ font: "500 12px system-ui", color: C.tertiary, marginTop: 2 }}>{a.typeName || a.typeCode}</div>}
           </div>

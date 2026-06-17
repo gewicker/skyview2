@@ -153,6 +153,10 @@ type Config struct {
 	ProcRasterURL     string  `json:"procRasterUrl"`
 	ProcRasterOpacity float64 `json:"procRasterOpacity"`
 
+	// Aircraft + airport lighting: "auto" follows the real sun (night factor), "on" forces full
+	// night lighting any time, "off" hides all the lights (nav/landing + approach/runway).
+	LightsMode string `json:"lightsMode"`
+
 	// Monitor (touch screen).
 	MonitorMode  MonitorMode `json:"monitorMode"`
 	LightsOutHour int        `json:"lightsOutHour"`
@@ -182,6 +186,7 @@ func Default() Config {
 		BurnInOrbit: false, // IPS panel — no burn-in risk
 		ShowSpotlight: true, SpotlightRadiusMi: 15, SpotlightLat: 47.618431, SpotlightLon: -122.191076,
 		ProcRasterOpacity: 0.5, // overlays off by default; opacity used when raster enabled
+		LightsMode:  "auto",
 		MonitorMode: "lightsout", LightsOutHour: 23, ShowCursor: false,
 	}
 }

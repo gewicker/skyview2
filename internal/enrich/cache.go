@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -152,6 +153,13 @@ func (c *cache) fetchRoute(cs string) {
 				DestLat: fr.Destination.Latitude, DestLon: fr.Destination.Longitude,
 			}
 		}
+		// Fallback to hexdb.io when adsbdb has no route (down / rate-limited / missing flight).
+		// hexdb returns just the ICAO endpoints, so codes only — still far better than "unknown".
+		if data == nil || data.Origin == "" || data.Destination == "" {
+			if r := c.hexdbRoute(cs); r != nil {
+				data = r
+			}
+		}
 		c.mu.Lock()
 		c.routes[cs] = routeEntry{Data: data, At: time.Now().UnixMilli()}
 		c.dirty = true
@@ -188,6 +196,22 @@ func (c *cache) fetchAircraft(hex string) {
 		c.dirty = true
 		c.mu.Unlock()
 	}()
+}
+
+// hexdbRoute is the fallback route source: hexdb.io returns the route as "ORIG-DEST" in ICAO
+// (e.g. "CYYZ-KSEA"). Codes only — no city names/coords — but a real route where adsbdb had none.
+func (c *cache) hexdbRoute(cs string) *RouteInfo {
+	var resp struct {
+		Route string `json:"route"`
+	}
+	if !c.get("https://hexdb.io/api/v1/route/icao/"+url.PathEscape(cs), &resp) {
+		return nil
+	}
+	parts := strings.SplitN(strings.TrimSpace(resp.Route), "-", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil
+	}
+	return &RouteInfo{Origin: strings.TrimSpace(parts[0]), Destination: strings.TrimSpace(parts[1])}
 }
 
 // get decodes a successful JSON response into v; returns false on any error (so the

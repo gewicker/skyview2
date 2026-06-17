@@ -41,6 +41,7 @@ export interface Config {
   starMagLimit: number; skyTimeOffsetMin: number;
   showNavaids: boolean; showProcedures: boolean;
   showProcRaster: boolean; procRasterUrl: string; procRasterOpacity: number;
+  lightsMode: string; // "auto" | "on" | "off" — aircraft + airport lighting
   monitorMode: MonitorMode; lightsOutHour: number; muteUntil: number; showCursor: boolean;
 }
 
