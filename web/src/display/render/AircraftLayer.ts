@@ -99,15 +99,21 @@ function motionHeading(a: Visible): number | null {
 export class AircraftLayer implements Layer {
   readonly name = "aircraft";
   private sunAt = 0;
-  private nf = 0; // cached night factor (recomputed every ~20 s)
+  private autoNf = 0;     // sun-based night factor (recomputed every ~20 s)
+  private nf = 0;         // effective night factor after the lights mode
+  private lightsOn = true; // false when lights mode is "off"
 
   draw(f: FrameContext): void {
     const ctx = f.ctx;
     const wall = Date.now();
     if (wall - this.sunAt > 20000) {
       this.sunAt = wall;
-      this.nf = nightFactor(sunAltitude(f.cfg.centerLat, f.cfg.centerLon, new Date(wall + (f.cfg.skyTimeOffsetMin || 0) * 60000)));
+      this.autoNf = nightFactor(sunAltitude(f.cfg.centerLat, f.cfg.centerLon, new Date(wall + (f.cfg.skyTimeOffsetMin || 0) * 60000)));
     }
+    // Lights mode: "auto" follows the sun, "on" forces full night lighting, "off" hides them.
+    const lmode = f.cfg.lightsMode || "auto";
+    this.lightsOn = lmode !== "off";
+    this.nf = lmode === "on" ? 1 : lmode === "off" ? 0 : this.autoNf;
     // Airborne aircraft read at the configured size; ground traffic is drawn as crisp little
     // chevrons/dots (see drawGroundMarker) so a busy ramp reads as distinct aircraft.
     // ZOOM COUPLING: glyphs are a fixed pixel size, so when you zoom in on a single aircraft
@@ -169,7 +175,7 @@ export class AircraftLayer implements Layer {
       }
       // Landing light: on final to a PREDICTED runway, the nose light comes on — a warm forward
       // beam that brightens as it nears the predicted touchdown (day + night, brighter at night).
-      if (!ground && arrivingLocal(a)) {
+      if (!ground && this.lightsOn && arrivingLocal(a)) {
         const altF = a.altBaro ?? 3000;
         const close = Math.max(0.3, Math.min(1, 1 - (altF - 200) / 2800)); // brighter lower/closer
         const flick = 0.9 + 0.1 * Math.sin(f.t * 26 + seedFor(a.hex));
@@ -309,7 +315,7 @@ export class AircraftLayer implements Layer {
     const sprite = getGlyphSprite(kind, rgb, 1, glyphS, f.dpr);
     ctx.drawImage(sprite.canvas, -sprite.half, -sprite.half, sprite.half * 2, sprite.half * 2);
     if (hasSpinners(kind)) drawGlyphSpinners(ctx, kind, glyphS, rgb, 1, f.t, seed);
-    drawNavLights(ctx, glyphS, lightAnchors(kind), seed, f.t, this.nf);
+    if (this.lightsOn) drawNavLights(ctx, glyphS, lightAnchors(kind), seed, f.t, this.nf);
     ctx.restore();
   }
 }

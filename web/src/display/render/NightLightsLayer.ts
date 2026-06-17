@@ -48,8 +48,11 @@ export class NightLightsLayer implements Layer {
       this.sunAt = wall;
       this.sunAlt = sunAltitude(f.cfg.centerLat, f.cfg.centerLon, new Date(wall + (f.cfg.skyTimeOffsetMin || 0) * 60000));
     }
+    // Lights mode: "off" hides the airport lighting, "on" forces it full, "auto" follows the sun.
+    const lmode = f.cfg.lightsMode || "auto";
+    if (lmode === "off") return;
     // Night factor (0 day → 1 night), smooth through twilight — fades the whole scene in.
-    const nf = Math.max(0, Math.min(1, (3 - this.sunAlt) / 9));
+    const nf = lmode === "on" ? 1 : Math.max(0, Math.min(1, (3 - this.sunAlt) / 9));
     if (nf < 0.04) return;
 
     const perNM = pxPerNM(f);

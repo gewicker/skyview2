@@ -91,6 +91,11 @@ export default function Control({ config: c, surface, onChange, onPush, onReset,
             options={[{ value: "off", label: "Off" }, { value: "rings", label: "Rings" }, { value: "grid", label: "Grid" }]}
             onChange={(v) => set({ gridOverlay: v })} />
         </ListRow>
+        <ListRow label="Lighting">
+          <Segmented<string> value={c.lightsMode || "auto"}
+            options={[{ value: "auto", label: "Auto" }, { value: "on", label: "On" }, { value: "off", label: "Off" }]}
+            onChange={(v) => set({ lightsMode: v })} />
+        </ListRow>
       </ListSection>
 
       <ListSection title="Navigation (charts)">
