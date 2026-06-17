@@ -178,6 +178,7 @@ type Config struct {
 	// Monitor (touch screen).
 	MonitorMode  MonitorMode `json:"monitorMode"`
 	LightsOutHour int        `json:"lightsOutHour"`
+	LightsOutBrightness float64 `json:"lightsOutBrightness"` // red-night map brightness 0..1 (bedside-personal)
 	MuteUntil    float64     `json:"muteUntil"` // manual "night now" override: epoch ms; honored only while dark, auto-clears at sunrise
 	ShowCursor   bool        `json:"showCursor"`
 }
@@ -210,6 +211,6 @@ func Default() Config {
 		RadarOpacity:         0.4, // kept a whisper under the cool traffic so precip isn't a 3rd stacked blue
 		HighwayIntensity:     0.6,
 		VesselIntensity:      0.7,
-		MonitorMode:          "lightsout", LightsOutHour: 23, ShowCursor: false,
+		MonitorMode:          "lightsout", LightsOutHour: 23, LightsOutBrightness: 0.47, ShowCursor: false,
 	}
 }

@@ -81,13 +81,17 @@ export class ApproachLayer implements Layer {
       const boxW = bullet + 4 + tw;
       const ty = p.y + 18;            // centered below the glyph (no diamond offset now)
       const bx = p.x - boxW / 2;
-      ctx.fillStyle = "rgba(8,20,28,0.72)";
-      roundRect(ctx, bx - 5, ty - 9, boxW + 10, 18, 4);
-      ctx.fill();
-      ctx.fillStyle = "rgba(150,230,255,0.95)"; // brighter cyan = established on final
+      // No plate (box = selection across the app): a bright cyan bullet + outlined text is the one
+      // high-signal "on final" event — bright cyan is reserved for THIS (passive chart furniture is dim).
+      ctx.fillStyle = "rgba(150,230,255,0.97)";
       ctx.beginPath();
       ctx.arc(bx + 2, ty, 2.5, 0, 6.283);
       ctx.fill();
+      ctx.lineJoin = "round";
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "rgba(0,0,0,0.7)";
+      ctx.strokeText(tag, bx + bullet + 4, ty);
+      ctx.fillStyle = "rgba(150,230,255,0.97)";
       ctx.fillText(tag, bx + bullet + 4, ty);
     }
     ctx.restore();
@@ -167,14 +171,4 @@ function bearing(la1: number, lo1: number, la2: number, lo2: number): number {
   const y = Math.sin(dl) * Math.cos(p2);
   const x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
   return ((Math.atan2(y, x) / DEG) % 360 + 360) % 360;
-}
-
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
 }

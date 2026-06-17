@@ -5,8 +5,8 @@
 import type { Layer, FrameContext } from "./types";
 import { NAVAIDS, FIXES, DME_CENTER, DME_RINGS_NM, destPoint, findNavaid, findFix, type Navaid } from "./navdata";
 
-const TEAL = "rgba(120,214,235,";   // chart cyan
-const FAINT = "rgba(120,214,235,0.30)";
+const TEAL = "rgba(108,152,172,";   // dim low-chroma cyan — PASSIVE chart furniture (bright cyan reserved for the live "on final" tag)
+const FAINT = "rgba(108,152,172,0.26)";
 
 export class NavaidLayer implements Layer {
   readonly name = "navaids";

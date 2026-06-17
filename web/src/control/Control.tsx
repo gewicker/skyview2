@@ -208,6 +208,9 @@ export default function Control({ config: c, surface, onChange, onPush, onReset,
             <Slider value={c.lightsOutHour} min={17} max={23} step={1} onChange={(v) => set({ lightsOutHour: v })} />
           </ListRow>
         )}
+        <ListRow label={`Lights-out brightness ${Math.round((c.lightsOutBrightness ?? 0.47) * 100)}%`}>
+          <Slider value={c.lightsOutBrightness ?? 0.47} min={0.1} max={0.9} step={0.05} onChange={(v) => set({ lightsOutBrightness: v })} />
+        </ListRow>
         <ListRow label="Burn-in shift"><Switch value={c.burnInOrbit} onChange={(v) => set({ burnInOrbit: v })} /></ListRow>
       </ListSection>
       {c.monitorMode === "lightsout" && (

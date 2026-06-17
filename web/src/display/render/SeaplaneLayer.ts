@@ -87,7 +87,7 @@ export class SeaplaneLayer implements Layer {
     ctx.arc(0, 0, 8, 0, Math.PI * 2);
     ctx.fillStyle = "rgba(20,40,52,0.55)";
     ctx.fill();
-    ctx.strokeStyle = "rgba(150,205,225,0.85)";
+    ctx.strokeStyle = "rgba(120,160,178,0.82)"; // passive low-chroma cyan (matches chart furniture)
     ctx.lineWidth = 1.5;
     ctx.stroke();
 

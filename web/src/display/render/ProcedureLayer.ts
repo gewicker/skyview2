@@ -10,7 +10,7 @@ import type { Layer, FrameContext } from "./types";
 import { FINALS, findFinal, type Final } from "./navdata";
 import { drawCard } from "./NavaidLayer";
 
-const CYAN = "rgba(120,214,235,";
+const CYAN = "rgba(108,152,172,"; // dim low-chroma cyan — passive chart furniture (matches NavaidLayer)
 
 // North-up bounds the optional raster underlay is georeferenced to (covers the three
 // fields). Supply an FAA TPP chart image cropped/scaled to exactly this box.

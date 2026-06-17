@@ -47,7 +47,7 @@ export interface Config {
   showHighways: boolean; highwayIntensity: number; // synthetic road traffic
   showVessels: boolean; vesselIntensity: number; // synthetic Sound vessel traffic
 
-  monitorMode: MonitorMode; lightsOutHour: number; muteUntil: number; showCursor: boolean;
+  monitorMode: MonitorMode; lightsOutHour: number; lightsOutBrightness: number; muteUntil: number; showCursor: boolean;
 }
 
 export interface Aircraft {

@@ -55,18 +55,19 @@ export class NotableLayer implements Layer {
   }
 
   private designator(ctx: CanvasRenderingContext2D, x: number, y: number, c: RGB, t: number): void {
-    const r = 15 + 2 * Math.sin(t * 4);
-    const g = 5;
+    // Status via a soft colour glow, NOT a corner bracket — a bracket/box around a target reads as
+    // SELECTION (the house rule); status is colour/weight. Slow calm breath (was a fast sin*4 reticle).
+    const breath = 0.5 + 0.5 * Math.sin(t * 1.5);
+    const r = 16;
     ctx.save();
-    ctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},0.9)`;
-    ctx.lineWidth = 2;
-    for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const) {
-      ctx.beginPath();
-      ctx.moveTo(x + sx * r, y + sy * r - sy * g * 2);
-      ctx.lineTo(x + sx * r, y + sy * r);
-      ctx.lineTo(x + sx * r - sx * g * 2, y + sy * r);
-      ctx.stroke();
-    }
+    ctx.globalCompositeOperation = "lighter";
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${(0.16 + 0.12 * breath).toFixed(3)})`);
+    g.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 

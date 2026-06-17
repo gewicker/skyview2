@@ -504,21 +504,31 @@ function drawLabels(ctx: CanvasRenderingContext2D, jobs: LabelJob[], f: FrameCon
       ctx.lineTo(j.ax, j.drawY);
       ctx.stroke();
     }
-    drawLabel(ctx, j.lines, j.ax, j.drawY);
+    drawLabel(ctx, j.lines, j.ax, j.drawY, j.w - 8);
   }
 }
 
-function drawLabel(ctx: CanvasRenderingContext2D, lines: string[], x: number, cy: number): void {
+function drawLabel(ctx: CanvasRenderingContext2D, lines: string[], x: number, cy: number, maxW: number): void {
   const n = lines.length;
   const top = cy - ((n - 1) * LINE_H) / 2;
-  // NO plate — an enclosing box reads as SELECTION (the house rule), and a column of plates on a
-  // busy arrival bank is exactly the clutter the ambient model avoids. A slightly heavier dark
-  // outline carries the contrast over bright imagery instead (no shadowBlur — too slow on the Pi).
+  // Soft BORDERLESS scrim for structure + legibility over bright imagery. A hard bordered/outlined
+  // rect reads as SELECTION (house rule); this is just a low-contrast backing with no edge, so it
+  // gives the label a clean card shape without competing with the selection ring.
+  const sx = x - 6, sy = top - LINE_H / 2 - 1, sw = maxW + 12, sh = n * LINE_H + 2, r = 5;
+  ctx.beginPath();
+  ctx.moveTo(sx + r, sy);
+  ctx.arcTo(sx + sw, sy, sx + sw, sy + sh, r);
+  ctx.arcTo(sx + sw, sy + sh, sx, sy + sh, r);
+  ctx.arcTo(sx, sy + sh, sx, sy, r);
+  ctx.arcTo(sx, sy, sx + sw, sy, r);
+  ctx.closePath();
+  ctx.fillStyle = "rgba(12,18,28,0.46)";
+  ctx.fill();
   ctx.lineJoin = "round";
   for (let i = 0; i < n; i++) {
     const y = top + i * LINE_H;
-    ctx.lineWidth = 3.5;
-    ctx.strokeStyle = "rgba(0,0,0,0.72)";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(0,0,0,0.55)";
     ctx.strokeText(lines[i], x, y);
     ctx.fillStyle = i === 0 ? "rgba(242,246,251,0.99)" : "rgba(208,217,228,0.93)";
     ctx.fillText(lines[i], x, y);
