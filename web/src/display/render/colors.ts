@@ -81,6 +81,15 @@ export function congRamp(t: number): RGB {
   return CONG_STOPS[CONG_STOPS.length - 1][1];
 }
 
+// Pull a colour toward its own grey by `amt` (0 = unchanged, 1 = fully desaturated).
+// Used as the ambient "this is modelled, not live" tell on the traffic layer when the
+// WSDOT feed is stale/down — a low-amplitude whisper, never an error state.
+export function desatRGB(c: RGB, amt: number): RGB {
+  const a = amt < 0 ? 0 : amt > 1 ? 1 : amt;
+  const grey = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
+  return [c[0] + (grey - c[0]) * a, c[1] + (grey - c[1]) * a, c[2] + (grey - c[2]) * a];
+}
+
 export function hexRGB(hex: string): RGB {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
   return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [255, 154, 60];

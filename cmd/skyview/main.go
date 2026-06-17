@@ -66,6 +66,11 @@ func main() {
 	}
 	enr := enrich.New(filepath.Join(*dataDir, "route-cache.json"), envFloat("ROUTE_CACHE_HOURS", 12))
 
+	// Live highway congestion (WSDOT Traffic Flow). The AccessCode is free and not secret
+	// (per WSDOT + George), so it's embedded as the default; env can still override. It stays
+	// server-side regardless (the client only ever sees /api/traffic). Empty = disabled.
+	traffic := feed.NewTraffic(env("WSDOT_ACCESS_CODE", "eab60899-d4ba-469c-9221-354c53b781bc"), filepath.Join(*dataDir, "traffic-cache.json"))
+
 	var lastMu sync.Mutex
 	var lastNow float64
 	var lastList []aircraft.Aircraft
@@ -87,6 +92,7 @@ func main() {
 		Addr: *addr,
 		Handler: httpd.New(httpd.Deps{
 			Hub: h, Cfg: cfg, Scenes: scenes, Notable: notable, Snapshot: snapshot, Status: status,
+			Traffic: func() any { return traffic.Latest() },
 		}),
 		// Hardening. No blanket WriteTimeout — it would kill the long-lived /ws connection;
 		// per-write deadlines live in the hub instead.
@@ -102,7 +108,8 @@ func main() {
 		go apiSrc.Run(ctx, opts.APIPollInterval)
 	}
 	go enr.Run(ctx)
-	log.Printf("feed: radio %s every %s (api supplement: %v)", opts.RadioURL, opts.PollInterval, opts.SupplementAPI)
+	go traffic.Run(ctx)
+	log.Printf("feed: radio %s every %s (api supplement: %v, wsdot traffic: %v)", opts.RadioURL, opts.PollInterval, opts.SupplementAPI, traffic.Enabled())
 
 	go func() {
 		t := time.NewTicker(opts.PollInterval)

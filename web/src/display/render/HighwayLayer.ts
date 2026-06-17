@@ -8,8 +8,9 @@
 // (honest texture; live WSDOT travel-times is a follow-up). Off by default.
 import type { Layer, FrameContext } from "./types";
 import { HIGHWAYS, congestionNow, type Highway } from "./highways";
-import { congRamp } from "./colors";
+import { congRamp, desatRGB } from "./colors";
 import { carSprite, drawCar, CAR_BUCKETS } from "./carGlyph";
+import { startTraffic, tickTraffic, liveCong, desatAmount } from "./traffic";
 
 const SPACING = 22;     // base px between cars (modulated tighter by congestion)
 const CAR_CAP = 90;     // hard cap on cars drawn per frame (Pi budget)
@@ -18,11 +19,18 @@ const col = (c: readonly number[], a: number) => `rgba(${c[0] | 0},${c[1] | 0},$
 export class HighwayLayer implements Layer {
   readonly name = "highway";
   private pts: { x: number; y: number }[] = [];
+  private desat = 0; // ambient "modelled not live" tell, set per frame
+
+  constructor() {
+    startTraffic(); // begin polling the backend WSDOT proxy (no key on server = no-op data)
+  }
 
   draw(f: FrameContext): void {
     if (!f.cfg.showHighways) return;
     const intensity = f.cfg.highwayIntensity ?? 0.6;
     if (intensity < 0.02) return;
+    tickTraffic(f.dt); // ease live congestion toward the latest poll's targets
+    this.desat = desatAmount();
     const ctx = f.ctx;
     const carAlpha = 0.7 * intensity; // effective body peak ≈ 0.42 at default intensity
     let budget = CAR_CAP;
@@ -40,12 +48,16 @@ export class HighwayLayer implements Layer {
     ctx.restore();
   }
 
-  // Per-segment congestion: the road's time-of-day value with a little along-road variation
-  // so the flow isn't a flat wash (a stretch can be heavier than its neighbour).
+  // Per-segment congestion. Live WSDOT data drives it where a sensor is near (blended by
+  // coverage×freshness); elsewhere / when the feed is stale it falls back to the time-of-day
+  // model. A small stable along-road sine keeps the flow from being a flat wash either way.
   private segCong(hw: Highway, segIdx: number): number {
-    const base = congestionNow(hw.base);
     const v = Math.sin(segIdx * 1.7 + hw.id.length) * 0.5 + 0.5; // 0..1 stable per segment
-    return Math.max(0, Math.min(1, base * (0.82 + 0.36 * v)));
+    const model = Math.max(0, Math.min(1, congestionNow(hw.base) * (0.82 + 0.36 * v)));
+    const live = liveCong(hw.id, segIdx);
+    if (live.w <= 0) return model;
+    const liveTex = Math.max(0, Math.min(1, live.val * (0.92 + 0.16 * v)));
+    return Math.max(0, Math.min(1, live.w * liveTex + (1 - live.w) * model));
   }
 
   private project(f: FrameContext, seg: [number, number][]): { x: number; y: number }[] {
@@ -71,9 +83,10 @@ export class HighwayLayer implements Layer {
       ctx.lineWidth = 1;
       ctx.strokeStyle = "rgba(120,130,150,0.14)";
       this.stroke(ctx, pts);
-      // Congestion-tinted flow dash, scrolling along travel at the local speed.
+      // Congestion-tinted flow dash, scrolling along travel at the local speed. Desaturated
+      // a touch when running on the model (feed stale/down) — the ambient live-vs-modelled tell.
       ctx.lineWidth = 2.4;
-      ctx.strokeStyle = col(congRamp(cong), 0.22 * (0.6 + 0.6 * intensity));
+      ctx.strokeStyle = col(desatRGB(congRamp(cong), this.desat), 0.22 * (0.6 + 0.6 * intensity));
       ctx.setLineDash([6, 10]);
       ctx.lineDashOffset = -((f.t * speed) % 16);
       this.stroke(ctx, pts);

@@ -32,6 +32,9 @@ type Deps struct {
 	Notable  *store.Notable
 	Snapshot func() (float64, []aircraft.Aircraft)
 	Status   func() msg.SourceStatus
+	// Traffic returns the latest WSDOT flow snapshot (any-typed to keep httpd
+	// decoupled from the feed package). May be nil when traffic is unwired.
+	Traffic func() any
 }
 
 // New builds the HTTP handler: WS, REST, and the embedded SPA.
@@ -66,6 +69,15 @@ func New(d Deps) http.Handler {
 		writeJSON(w, map[string]any{"now": now, "aircraft": ac})
 	})
 	mux.HandleFunc("/api/notable", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, d.Notable.List()) })
+
+	// Live highway congestion snapshot (WSDOT flow stations). Empty when disabled.
+	mux.HandleFunc("/api/traffic", func(w http.ResponseWriter, r *http.Request) {
+		if d.Traffic == nil {
+			writeJSON(w, map[string]any{"stations": []any{}, "updated": 0})
+			return
+		}
+		writeJSON(w, d.Traffic())
+	})
 
 	// Diagnostics: feed health + live counts + runtime stats (for the Pi and dev).
 	mux.HandleFunc("/api/diag", func(w http.ResponseWriter, r *http.Request) {
