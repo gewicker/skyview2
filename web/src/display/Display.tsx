@@ -13,6 +13,7 @@ import { NavaidLayer } from "./render/NavaidLayer";
 import { PlaceLabelsLayer } from "./render/PlaceLabelsLayer";
 import { TrailLayer } from "./render/TrailLayer";
 import { RouteLayer } from "./render/RouteLayer";
+import { MarineLayer } from "./render/MarineLayer";
 import { AIRPORTS } from "./render/airports";
 import { LeaderLayer } from "./render/LeaderLayer";
 import { AircraftLayer } from "./render/AircraftLayer";
@@ -105,6 +106,7 @@ export default function Display() {
     r.use(new ProcedureLayer()); // final-approach vectors (under traffic), off by default
     r.use(new NavaidLayer());    // VOR roses / fixes (under traffic), off by default
     r.use(new StaticOverlayLayer([new PlaceLabelsLayer()], (f) => f.cfg.mapStyle));
+    r.use(new MarineLayer());  // coastal fog (weather) — under the traffic, off by default
     r.use(new TrailLayer());
     r.use(new RouteLayer());   // dashed great-circle to destination for the selected aircraft
     r.use(new LeaderLayer());

@@ -42,6 +42,8 @@ export interface Config {
   showNavaids: boolean; showProcedures: boolean;
   showProcRaster: boolean; procRasterUrl: string; procRasterOpacity: number;
   lightsMode: string; // "auto" | "on" | "off" — aircraft + airport lighting
+  showMarineLayer: boolean; marineLayerIntensity: number; // coastal fog overlay
+
   monitorMode: MonitorMode; lightsOutHour: number; muteUntil: number; showCursor: boolean;
 }
 

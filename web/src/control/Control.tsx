@@ -96,6 +96,12 @@ export default function Control({ config: c, surface, onChange, onPush, onReset,
             options={[{ value: "auto", label: "Auto" }, { value: "on", label: "On" }, { value: "off", label: "Off" }]}
             onChange={(v) => set({ lightsMode: v })} />
         </ListRow>
+        <ListRow label="Marine layer"><Switch value={c.showMarineLayer} onChange={(v) => set({ showMarineLayer: v })} /></ListRow>
+        {c.showMarineLayer && (
+          <ListRow label={`Fog ${Math.round((c.marineLayerIntensity ?? 0.6) * 100)}%`}>
+            <Slider value={c.marineLayerIntensity ?? 0.6} min={0} max={1} step={0.05} onChange={(v) => set({ marineLayerIntensity: v })} />
+          </ListRow>
+        )}
       </ListSection>
 
       <ListSection title="Navigation (charts)">

@@ -136,6 +136,10 @@ type Config struct {
 	ShowPhotos        bool   `json:"showPhotos"`
 	BurnInOrbit       bool   `json:"burnInOrbit"`
 
+	// Marine layer (coastal fog) — off by default; intensity is a manual 0..1 for now.
+	ShowMarineLayer      bool    `json:"showMarineLayer"`
+	MarineLayerIntensity float64 `json:"marineLayerIntensity"`
+
 	// Spotlight.
 	ShowSpotlight     bool    `json:"showSpotlight"`
 	SpotlightRadiusMi float64 `json:"spotlightRadiusMi"`
@@ -186,7 +190,8 @@ func Default() Config {
 		BurnInOrbit: false, // IPS panel — no burn-in risk
 		ShowSpotlight: true, SpotlightRadiusMi: 15, SpotlightLat: 47.618431, SpotlightLon: -122.191076,
 		ProcRasterOpacity: 0.5, // overlays off by default; opacity used when raster enabled
-		LightsMode:  "auto",
-		MonitorMode: "lightsout", LightsOutHour: 23, ShowCursor: false,
+		LightsMode:           "auto",
+		MarineLayerIntensity: 0.6,
+		MonitorMode:          "lightsout", LightsOutHour: 23, ShowCursor: false,
 	}
 }
