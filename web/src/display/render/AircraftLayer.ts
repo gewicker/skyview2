@@ -630,8 +630,11 @@ function labelLines(a: Visible, cfg: Config): string[] {
     // say so. Otherwise show the route destination — unless that destination is the very
     // field it's departing (a bogus "→ SEA" on a SEA climb-out), in which case suppress.
     const arr = arrivingLocal(a);
-    if (arr) lines.push("→ " + arr);
-    else if (a.destination && a.destination !== departingLocal(a)) lines.push("→ " + a.destination);
+    if (arr) lines.push("→ " + arr); // physics-verified local arrival — always trusted
+    else if (a.destination && a.destination !== departingLocal(a)) {
+      // Route-DB destination: append "?" when the geometry check flagged it unverified.
+      lines.push("→ " + a.destination + (a.routeUncertain ? " ?" : ""));
+    }
   }
   return lines;
 }

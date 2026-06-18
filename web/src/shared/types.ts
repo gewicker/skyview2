@@ -62,6 +62,7 @@ export interface Aircraft {
   ias?: number; tas?: number; mach?: number;
   typeCode?: string; typeName?: string; airline?: string; registration?: string;
   origin?: string; destination?: string; originName?: string; destName?: string;
+  routeUncertain?: boolean; // schedule-DB route failed the heading/position geometry check
   originLat?: number; originLon?: number; destLat?: number; destLon?: number;
 }
 

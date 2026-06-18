@@ -9,6 +9,7 @@ package enrich
 
 import (
 	"context"
+	"math"
 	"strings"
 
 	"github.com/gewicker/skyview2/internal/aircraft"
@@ -105,9 +106,81 @@ func (e *Enricher) Process(list []aircraft.Aircraft, now int64) []aircraft.Aircr
 			destLat: ac.DestLat, destLon: ac.DestLon,
 			lastSeen: now,
 		}
+
+		// Verify the schedule-DB route against the aircraft's actual motion. Runs on the OUTPUT
+		// only (the sticky cache above keeps the RAW route), so it re-evaluates fresh each tick
+		// from current heading and can't oscillate. Corrects reversed legs; flags the rest.
+		verifyRoute(ac)
 	}
 	e.prune(now)
 	return list
+}
+
+// verifyRoute cross-checks origin/dest (from the callsign schedule DB) against the aircraft's own
+// position + track. Same principle as the local-arrival approach-physics fix, but for enroute
+// flights: if the plane is clearly flying toward the claimed ORIGIN, the leg is reversed → swap;
+// if its heading points at NEITHER endpoint while still far out, the route is untrustworthy → flag
+// RouteUncertain (the client marks it). Needs both endpoints' coords (adsbdb), so code-only hexdb
+// fallbacks are left as-is. Terminal-area maneuvering (near the field) is never judged here.
+func verifyRoute(ac *aircraft.Aircraft) {
+	if ac.OnGround || ac.Lat == nil || ac.Lon == nil || ac.Track == nil ||
+		ac.OriginLat == nil || ac.OriginLon == nil || ac.DestLat == nil || ac.DestLon == nil {
+		return
+	}
+	if ac.GS != nil && *ac.GS < 60 {
+		return // too slow for track to be a reliable direction
+	}
+	lat, lon, trk := *ac.Lat, *ac.Lon, *ac.Track
+	bDest := bearing(lat, lon, *ac.DestLat, *ac.DestLon)
+	bOrig := bearing(lat, lon, *ac.OriginLat, *ac.OriginLon)
+	dDest := angDiff(trk, bDest)
+	dOrig := angDiff(trk, bOrig)
+	distDest := distNM(lat, lon, *ac.DestLat, *ac.DestLon)
+
+	// Reversed leg: heading clearly favors the origin, points away from the dest, and we're not
+	// already on top of the dest. Swap so the label shows where it's actually going.
+	if dOrig < dDest-40 && dDest > 90 && distDest > 40 {
+		ac.Origin, ac.Destination = ac.Destination, ac.Origin
+		ac.OriginName, ac.DestName = ac.DestName, ac.OriginName
+		ac.OriginLat, ac.DestLat = ac.DestLat, ac.OriginLat
+		ac.OriginLon, ac.DestLon = ac.DestLon, ac.OriginLon
+		bDest = bearing(lat, lon, *ac.DestLat, *ac.DestLon)
+		dDest = angDiff(trk, bDest)
+		distDest = distNM(lat, lon, *ac.DestLat, *ac.DestLon)
+	}
+	// Untrustworthy: heading isn't toward the dest and we're far enough out that it isn't just a
+	// terminal-area vector. Flag it; the client shows the guess but marks it unverified.
+	ac.RouteUncertain = dDest > 70 && distDest > 60
+}
+
+// bearing returns the initial great-circle bearing from (la1,lo1) to (la2,lo2) in degrees 0..360.
+func bearing(la1, lo1, la2, lo2 float64) float64 {
+	d := math.Pi / 180
+	y := math.Sin((lo2-lo1)*d) * math.Cos(la2*d)
+	x := math.Cos(la1*d)*math.Sin(la2*d) - math.Sin(la1*d)*math.Cos(la2*d)*math.Cos((lo2-lo1)*d)
+	b := math.Atan2(y, x) / d
+	if b < 0 {
+		b += 360
+	}
+	return b
+}
+
+// angDiff is the smallest absolute difference between two bearings, 0..180.
+func angDiff(a, b float64) float64 {
+	d := math.Mod(math.Abs(a-b), 360)
+	if d > 180 {
+		d = 360 - d
+	}
+	return d
+}
+
+func distNM(la1, lo1, la2, lo2 float64) float64 {
+	const R = 3440.065 // nautical miles
+	d := math.Pi / 180
+	dla := (la2 - la1) * d
+	dlo := (lo2 - lo1) * d
+	a := math.Sin(dla/2)*math.Sin(dla/2) + math.Cos(la1*d)*math.Cos(la2*d)*math.Sin(dlo/2)*math.Sin(dlo/2)
+	return 2 * R * math.Asin(math.Min(1, math.Sqrt(a)))
 }
 
 // prune drops sticky entries for aircraft gone > 10 min (keep the map small).

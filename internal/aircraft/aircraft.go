@@ -50,4 +50,8 @@ type Aircraft struct {
 	OriginLon    *float64 `json:"originLon,omitempty"`
 	DestLat      *float64 `json:"destLat,omitempty"`
 	DestLon      *float64 `json:"destLon,omitempty"`
+	// RouteUncertain is set when the schedule-DB route fails a geometry check against the
+	// aircraft's own heading/position (e.g. flying away from the claimed destination). The
+	// client marks such a destination as unverified rather than trusting it.
+	RouteUncertain bool `json:"routeUncertain,omitempty"`
 }
