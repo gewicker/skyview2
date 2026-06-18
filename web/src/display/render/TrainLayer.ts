@@ -18,11 +18,28 @@ const LINE_RGB: Record<string, [number, number, number]> = {
   "2": [0, 124, 173],  // 2 Line blue  (007CAD)
 };
 
+type RGB3 = [number, number, number];
+
 // Blend an rgb toward its luma (grey) by k (0..1).
-function desat(rgb: [number, number, number], k: number): [number, number, number] {
+function desat(rgb: RGB3, k: number): RGB3 {
   const [r, g, b] = rgb;
   const y = 0.299 * r + 0.587 * g + 0.114 * b;
   return [r + (y - r) * k, g + (y - g) * k, b + (y - b) * k];
+}
+
+function lerp3(a: RGB3, b: RGB3, t: number): RGB3 {
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+}
+const LATE_RGB: RGB3 = [255, 150, 90];   // running late → warm coral (earthier than aircraft amber)
+const EARLY_RGB: RGB3 = [180, 210, 255]; // running early → cool ice
+
+// Tint a train by its schedule deviation (seconds) — the system's punctuality as color temperature.
+// A gentle tint (cap 50% toward the target) so it reads as warmth/coolness, never a category flip.
+function lateTint(rgb: RGB3, devSec: number): RGB3 {
+  const k = Math.max(-1, Math.min(1, devSec / 300)); // ±5 min = full
+  if (k > 0) return lerp3(rgb, LATE_RGB, k * 0.5);
+  if (k < 0) return lerp3(rgb, EARLY_RGB, -k * 0.5);
+  return rgb;
 }
 const rgbStr = (c: [number, number, number]) => `${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])}`;
 
@@ -44,8 +61,8 @@ export class TrainLayer implements Layer {
     for (const t of live) {
       const p = f.cam.project(t.lat, t.lon);
       if (!onScreen(p.x, p.y)) continue;
-      const baseRgb = LINE_RGB[t.line] ?? [120, 160, 190];
-      const c = desat(baseRgb, (1 - t.fade) * 0.6); // a dropping train greys out before vanishing
+      const baseRgb: RGB3 = LINE_RGB[t.line] ?? ([120, 160, 190] as RGB3);
+      const c = desat(lateTint(baseRgb, t.devSec), (1 - t.fade) * 0.6); // lateness tint, then fade-grey
       const base = rgbStr(c);
       const a = t.fade;
       // comet tail from the lagging anchor

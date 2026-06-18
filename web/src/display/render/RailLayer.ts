@@ -5,6 +5,7 @@
 // is projected into a view-keyed cache (reprojected only on pan/zoom), like the highway layer.
 import type { Layer, FrameContext } from "./types";
 import { RAIL_SEGMENTS, RAIL_STATIONS } from "./rail";
+import { liveTrains } from "./livetrains";
 
 const LINE = "rgba(40,225,170,";             // bright transit JADE (alpha appended) — more saturated and
                                              // brighter than the cool satellite grade, and clear of the
@@ -19,6 +20,8 @@ export class RailLayer implements Layer {
   readonly name = "rail";
   private proj: Pt[][] = [];
   private projKey = "";
+  private rings: { x: number; y: number; t0: number }[] = []; // one-shot arrival rings at stations
+  private lastFire = new Map<string, number>();               // per-station ring cooldown (sec)
 
   private ensureProjected(f: FrameContext): void {
     const v = f.view;
@@ -57,14 +60,27 @@ export class RailLayer implements Layer {
       ctx.lineWidth = 1 * wm;
       stroke(ctx, pts);
     }
-    // Stations: a small ring + light core — the landmarks. Label-free until tapped (ambient rule).
+    // Stations: ring + core landmarks, whose HALO BLOOMS with nearby live-train activity — hubs
+    // breathe through the day, quiet stations stay dim. Label-free until tapped (ambient rule).
+    const trains = liveTrains();
     const sr = wm; // stations grow a touch with zoom too
     for (const s of RAIL_STATIONS) {
       const p = f.cam.project(s.lat, s.lon);
       if (p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) continue;
-      ctx.beginPath();                                 // faint halo bloom
-      ctx.arc(p.x, p.y, 7 * sr, 0, Math.PI * 2);
-      ctx.fillStyle = LINE + "0.18)";
+      // nearest live train → bloom (within 2 NM) + a one-shot arrival ring (within ~0.3 NM)
+      let near = Infinity;
+      for (const t of trains) {
+        const d = distNMrail(s.lat, s.lon, t.lat, t.lon);
+        if (d < near) near = d;
+      }
+      const prox = near < 2 ? 1 - near / 2 : 0;
+      if (near < 0.3 && f.t - (this.lastFire.get(s.name) ?? -999) > 30) {
+        this.rings.push({ x: p.x, y: p.y, t0: f.t }); // a train just pulled in — fire one soft ring
+        this.lastFire.set(s.name, f.t);
+      }
+      ctx.beginPath();                                 // halo bloom (swells with nearby train)
+      ctx.arc(p.x, p.y, 7 * sr * (1 + 0.6 * prox), 0, Math.PI * 2);
+      ctx.fillStyle = LINE + (0.18 + 0.27 * prox).toFixed(3) + ")";
       ctx.fill();
       ctx.beginPath();                                 // stroked ring = a deliberate "stop" marker
       ctx.arc(p.x, p.y, 5 * sr, 0, Math.PI * 2);
@@ -75,6 +91,17 @@ export class RailLayer implements Layer {
       ctx.arc(p.x, p.y, 2.4 * sr, 0, Math.PI * 2);
       ctx.fillStyle = STATION_CORE;
       ctx.fill();
+    }
+    // Arrival rings: a single slow expanding ring as a train reaches a station — a quiet "bell of
+    // light," like a drop in water. Rare (30s cooldown/station), low-alpha, no glow.
+    this.rings = this.rings.filter((r) => f.t - r.t0 < 1.2);
+    for (const r of this.rings) {
+      const age = (f.t - r.t0) / 1.2; // 0..1
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, (5 + 17 * age) * sr, 0, Math.PI * 2);
+      ctx.strokeStyle = LINE + (0.5 * (1 - age)).toFixed(3) + ")";
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
     }
     ctx.restore();
   }
@@ -89,4 +116,10 @@ function stroke(ctx: CanvasRenderingContext2D, pts: Pt[]): void {
   ctx.moveTo(pts[0].x, pts[0].y);
   for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
   ctx.stroke();
+}
+// Cheap equirectangular distance in nautical miles — fine for the short station↔train ranges here.
+function distNMrail(la1: number, lo1: number, la2: number, lo2: number): number {
+  const x = (lo2 - lo1) * Math.cos((((la1 + la2) / 2) * Math.PI) / 180);
+  const y = la2 - la1;
+  return Math.sqrt(x * x + y * y) * 60;
 }
