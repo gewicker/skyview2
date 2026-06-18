@@ -179,6 +179,7 @@ func applyADB(ac *aircraft.Aircraft, r *RouteInfo) {
 		ac.TypeName = r.Model
 	}
 	ac.RouteUncertain = false
+	ac.RouteVerified = true // confirmed against the live flight-status API
 }
 
 // verifyRoute cross-checks origin/dest (from the callsign schedule DB) against the aircraft's own

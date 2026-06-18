@@ -513,6 +513,16 @@ function TapCard({ a, cfg, onClose }: { a: Aircraft; cfg: Config; onClose: () =>
                   {eta && <span><span style={{ color: C.tertiary, fontSize: 10, fontWeight: 600 }}>ETA </span><span style={{ color: C.secondary }}>{eta}</span></span>}
                 </div>
               )}
+              {(() => {
+                const prov = routeProvenance(a);
+                return (
+                  <div style={{ marginTop: 8, font: "500 10px system-ui", letterSpacing: 0.3, color: C.tertiary, display: "flex", alignItems: "center", gap: 5 }}>
+                    {prov.mark && <span style={{ color: C.secondary, fontWeight: 700 }}>{prov.mark}</span>}
+                    <span style={{ textTransform: "uppercase" }}>{prov.word}</span>
+                    <span style={{ opacity: 0.75 }}>· {prov.note}</span>
+                  </div>
+                );
+              })()}
             </>
           ) : (
             <div style={{ font: "500 13px system-ui", color: C.tertiary }}>◇ Route unknown</div>
@@ -565,6 +575,17 @@ function routeEnds(a: Aircraft): { from: RouteEnd; to: RouteEnd } | null {
   // destination (the route DB frequently shows the wrong leg/route for an arrival).
   if (arr) to = { code: arr.code, city: arr.name, lat: arr.lat, lon: arr.lon };
   return { from, to };
+}
+
+// Provenance of the shown route — mark by exception (design aac08cd5): ✓ confirmed for a route
+// validated against the live flight-status API OR a physics-verified local arrival; nothing for a
+// plain schedule-DB guess (the common case stays unmarked); ? unverified when the geometry check
+// contradicts the schedule route. Glyph-based so it's colorblind-safe; no new colors.
+function routeProvenance(a: Aircraft): { mark: string; word: string; note: string } {
+  if (localArrival(a)) return { mark: "✓", word: "confirmed", note: "on final approach" };
+  if (a.routeVerified) return { mark: "✓", word: "confirmed", note: "live flight status" };
+  if (a.routeUncertain) return { mark: "?", word: "unverified", note: "heading doesn't match" };
+  return { mark: "", word: "scheduled", note: "route database" };
 }
 
 // The local field an aircraft is physically landing at — the SAME approach-physics authority

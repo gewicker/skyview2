@@ -63,6 +63,7 @@ export interface Aircraft {
   typeCode?: string; typeName?: string; airline?: string; registration?: string;
   origin?: string; destination?: string; originName?: string; destName?: string;
   routeUncertain?: boolean; // schedule-DB route failed the heading/position geometry check
+  routeVerified?: boolean; // route confirmed against the live flight-status API (AeroDataBox)
   originLat?: number; originLon?: number; destLat?: number; destLon?: number;
 }
 

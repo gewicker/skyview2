@@ -54,4 +54,7 @@ type Aircraft struct {
 	// aircraft's own heading/position (e.g. flying away from the claimed destination). The
 	// client marks such a destination as unverified rather than trusting it.
 	RouteUncertain bool `json:"routeUncertain,omitempty"`
+	// RouteVerified is set when the route was confirmed against the live flight-status API
+	// (AeroDataBox) — today's actual leg + equipment. The client marks it "confirmed".
+	RouteVerified bool `json:"routeVerified,omitempty"`
 }
