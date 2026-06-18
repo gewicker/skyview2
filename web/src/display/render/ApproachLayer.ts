@@ -107,14 +107,25 @@ export type ArrivalInput = {
   track?: number | null; destination?: string; onGround?: boolean;
 };
 
+// Per-frame memo: the renderer rebuilds a fresh Visible object every sample(), so a WeakMap
+// keyed on that object naturally scopes to one frame (last frame's objects are GC'd) — no manual
+// clearing, no leak. This collapses the ~3 identical arrivalField() calls per aircraft per frame
+// (landing light + label + ApproachLayer) into one ENDS scan.
+const _arrMemo = new WeakMap<object, Match | null>();
+
 // PUBLIC AUTHORITY for a local "→ DEST": the field an aircraft is physically established on
 // final to, by glidepath + lateral-alignment physics. Replaces the old nearest-centroid test,
 // which mislabels SEA arrivals as BFI (the fields sit ~4 mi apart and SEA's north approach
 // passes right over Boeing Field). Returns null unless genuinely on a runway's final.
 export function arrivalField(a: ArrivalInput): Match | null {
-  if (a.onGround) return null;
-  if (a.altBaro != null && a.altBaro > 6000) return null;
-  return match(a);
+  const memo = _arrMemo.get(a as object);
+  if (memo !== undefined) return memo;
+  let res: Match | null;
+  if (a.onGround) res = null;
+  else if (a.altBaro != null && a.altBaro > 6000) res = null;
+  else res = match(a);
+  _arrMemo.set(a as object, res);
+  return res;
 }
 
 // Pick the runway an aircraft is actually on final to. Lateral alignment qualifies a
