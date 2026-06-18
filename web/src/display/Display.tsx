@@ -89,7 +89,7 @@ export default function Display() {
   const pokeUi = () => {
     setUiVisible(true);
     clearTimeout(uiTimer.current);
-    uiTimer.current = window.setTimeout(() => setUiVisible(false), 5000);
+    uiTimer.current = window.setTimeout(() => setUiVisible(false), 14000); // longer idle window — the controls were vanishing too fast on a glanceable device
   };
 
   // Pointer/gesture state.
@@ -278,6 +278,9 @@ export default function Display() {
   };
 
   const sel = selected ? state.aircraft.find((a) => a.hex === selected) : undefined;
+  // Dark-red control chrome at night so opening settings at the bedside doesn't blast white light.
+  const ctlNight = effective?.monitorMode === "red" || effective?.monitorMode === "lightsout"
+    || effective?.monitorMode === "night" || muted;
 
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
@@ -315,10 +318,8 @@ export default function Display() {
         <CtlBtn label="⌂" onClick={home} title="Recenter on home" />
       </div>
       <div style={{ position: "absolute", left: 16, bottom: 16, display: "flex", flexDirection: "column", gap: 10, ...autoHide(uiVisible) }}>
-        {effective?.monitorMode === "lightsout" && (
-          <CtlBtn label={muted ? "☀" : "🌙"} onClick={toggleMute}
-            title={muted ? "Resume — clear night mute" : "Mute now (night) until sunrise"} />
-        )}
+        <CtlBtn label={muted ? "☀" : "🌙"} onClick={toggleMute}
+          title={muted ? "Resume — clear night mute" : "Mute now (night) until sunrise"} />
         <CtlBtn label="⚙" onClick={() => setShowSettings(true)} title="Settings" />
       </div>
       {selected && (
@@ -337,14 +338,14 @@ export default function Display() {
           style={{ position: "absolute", inset: 0, zIndex: 20, display: "flex", justifyContent: "flex-end",
             background: "rgba(0,0,0,0.45)" }}>
           <div onClick={(e) => e.stopPropagation()}
-            style={{ width: "min(440px, 96%)", height: "100%", background: "#f2f2f7",
+            style={{ width: "min(440px, 96%)", height: "100%", background: ctlNight ? "#160c0c" : "#f2f2f7",
               boxShadow: "-10px 0 36px rgba(0,0,0,0.45)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "12px 16px", borderBottom: "1px solid #d6d6db", background: "#f2f2f7" }}>
-              <span style={{ font: "600 16px system-ui", color: "#1c1c1e" }}>Settings</span>
+              padding: "12px 16px", borderBottom: `1px solid ${ctlNight ? "#3a2020" : "#d6d6db"}`, background: ctlNight ? "#1e1010" : "#f2f2f7" }}>
+              <span style={{ font: "600 16px system-ui", color: ctlNight ? "#e6c2b4" : "#1c1c1e" }}>Settings</span>
               <button onClick={() => setShowSettings(false)}
-                style={{ border: 0, background: "#e4e4ea", color: "#1c1c1e", borderRadius: 16,
-                  padding: "7px 16px", font: "600 14px system-ui", cursor: "pointer" }}>Done</button>
+                style={{ border: 0, background: ctlNight ? "#3a2222" : "#e4e4ea", color: ctlNight ? "#e6c2b4" : "#1c1c1e", borderRadius: 16,
+                  padding: "9px 18px", font: "600 15px system-ui", cursor: "pointer" }}>Done</button>
             </div>
             <div style={{ flex: 1, overflow: "auto" }}>
               {effective ? (
@@ -371,8 +372,8 @@ export default function Display() {
 }
 
 const btnBase: React.CSSProperties = {
-  width: 44, height: 44, borderRadius: "50%", border: "0.5px solid rgba(255,255,255,0.18)",
-  background: "rgba(18,22,28,0.62)", color: "rgba(235,240,248,0.95)", font: "20px system-ui",
+  width: 60, height: 60, borderRadius: "50%", border: "0.5px solid rgba(255,255,255,0.18)",
+  background: "rgba(18,22,28,0.62)", color: "rgba(235,240,248,0.95)", font: "24px system-ui",
   display: "grid", placeItems: "center", cursor: "pointer", backdropFilter: "blur(8px)",
   WebkitBackdropFilter: "blur(8px)",
 };

@@ -18,6 +18,9 @@ export interface Visible extends Aircraft {
   transitGround?: boolean;
   transitLat?: number;
   transitLon?: number;
+  // 0..1 fade progress once the contact has dropped from the feed (signal lost). Frozen at the
+  // last real position; the aircraft layer plays a "lost contact" fade + notation over this.
+  lost?: number;
 }
 
 // Per-frame context handed to every layer. Carries the single Camera, the config,

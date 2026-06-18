@@ -2,7 +2,7 @@
 // (Display's settings drawer) owns config + routing: on the kiosk, edits patch the
 // shared server config; on the web, edits write a LOCAL override layer so the web view
 // can differ from the touch display, with "Push to Display" to send it to the kiosk.
-import { useState, type ReactNode } from "react";
+import { useState, type ReactNode, type CSSProperties } from "react";
 import { ListSection, ListRow, Switch, Segmented, Slider } from "./ui";
 import type {
   Config, MapStyle, Skin, TrailMode, MonitorMode, LabelDensity, GridOverlay, ShowFields, SceneMeta,
@@ -31,16 +31,25 @@ export default function Control({ config: c, surface, onChange, onPush, onReset,
   const setField = (k: keyof ShowFields, v: boolean) => set({ showFields: { ...c.showFields, [k]: v } });
   const [sceneName, setSceneName] = useState("");
 
+  // Night/lights-out theme: recolour the whole control surface dark + red-shifted so opening
+  // settings at the bedside doesn't blast white light into a dark room. Drives the --sv-* vars.
+  const night = c.monitorMode === "red" || c.monitorMode === "lightsout" || c.monitorMode === "night";
+  const themeVars: CSSProperties = night ? {
+    "--sv-bg": "#160c0c", "--sv-surface": "#231414", "--sv-text": "#e6c2b4", "--sv-text2": "#c79a8c",
+    "--sv-muted": "#9a6a60", "--sv-border": "#3a2020", "--sv-switch-off": "#3a2222",
+    "--sv-seg": "#2a1616", "--sv-seg-active": "#4a2828",
+  } as CSSProperties : {};
+
   return (
-    <div style={{ background: "#f2f2f7", minHeight: "100%", padding: "12px 16px 48px", font: "16px system-ui", color: "#1c1c1e" }}>
+    <div style={{ ...themeVars, background: "var(--sv-bg,#f2f2f7)", minHeight: "100%", padding: "12px 16px 48px", font: "16px system-ui", color: "var(--sv-text,#1c1c1e)" }}>
       {surface === "web" && (
-        <div style={{ ...card, padding: 14, marginBottom: 22, background: dirty ? "#eaf4ff" : "#fff" }}>
-          <div style={{ font: "13px system-ui", color: "#51616f", marginBottom: 10 }}>
+        <div style={{ ...card, padding: 14, marginBottom: 22, background: dirty ? (night ? "#2a1a1a" : "#eaf4ff") : "var(--sv-surface,#fff)" }}>
+          <div style={{ font: "13px system-ui", color: "var(--sv-muted,#51616f)", marginBottom: 10 }}>
             You're editing this <b>web view</b>. Changes stay on this screen until you push them to the display.
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <Btn primary onClick={() => onPush?.()}>Push to Display →</Btn>
-            <Btn onClick={() => onReset?.()}>Reset to Display</Btn>
+            <Btn onClick={() => { if (!dirty || confirm("Discard your unpushed changes and revert to what's on the display?")) onReset?.(); }}>Discard changes</Btn>
           </div>
         </div>
       )}
@@ -228,7 +237,7 @@ export default function Control({ config: c, surface, onChange, onPush, onReset,
           <ListRow key={s.name} label={s.name} first={i === 0}>
             <span style={{ display: "inline-flex", gap: 8 }}>
               <Btn onClick={() => onApplyScene?.(s.name)}>Apply</Btn>
-              <Btn danger onClick={() => onDeleteScene?.(s.name)}>✕</Btn>
+              <Btn danger onClick={() => { if (confirm(`Delete scene "${s.name}"?`)) onDeleteScene?.(s.name); }}>✕</Btn>
             </span>
           </ListRow>
         ))}
@@ -257,7 +266,7 @@ export default function Control({ config: c, surface, onChange, onPush, onReset,
   );
 }
 
-const card = { background: "#fff", borderRadius: 12 } as const;
+const card = { background: "var(--sv-surface,#fff)", borderRadius: 12 } as const;
 
 function Btn({ children, onClick, primary, danger }: { children: ReactNode; onClick: () => void; primary?: boolean; danger?: boolean }) {
   const bg = primary ? "#0a84ff" : danger ? "#ffe5e3" : "#e4e4ea";

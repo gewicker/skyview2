@@ -38,6 +38,7 @@ export class TrailLayer implements Layer {
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     for (const a of list) {
+      if (a.lost != null) continue; // a lost contact's trail fades with its glyph (no full-strength comet)
       const pts = a.trail;
       if (pts.length < 2) continue;
       const t0 = pts[0].t;

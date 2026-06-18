@@ -137,6 +137,7 @@ export class AircraftLayer implements Layer {
       const ground = !!a.onGround ||
         (a.gs != null && a.gs < 4 && (a.altBaro == null || a.altBaro < 1200));
       const p = f.cam.project(a.lat, a.lon);
+      if (a.lost != null) { this.drawLostContact(f, a, p, base); continue; } // signal lost — fade + notate, no label/lights
       const kind = classifyGlyph(a);
       const full = base * GLYPH_SCALE[kind] * zq;
       const glyphS = ground ? full * 0.5 : full;       // small footprint on the ground
@@ -325,6 +326,58 @@ export class AircraftLayer implements Layer {
     ctx.drawImage(sprite.canvas, -sprite.half, -sprite.half, sprite.half * 2, sprite.half * 2);
     if (hasSpinners(kind)) drawGlyphSpinners(ctx, kind, glyphS, rgb, 1, f.t, seed);
     if (this.lightsOn) drawNavLights(ctx, glyphS, lightAnchors(kind), seed, f.t, this.nf);
+    ctx.restore();
+  }
+
+  // Contact lost: a dissolving radar-blip. Expanding cool-white ring(s) + the aircraft desaturating
+  // to grey and fading out, with a brief "<callsign> · LOST" / type notation of what dropped off.
+  private drawLostContact(f: FrameContext, a: Visible, p: { x: number; y: number }, base: number): void {
+    const ctx = f.ctx;
+    const lf = a.lost ?? 0;       // 0..1 fade progress
+    const fade = 1 - lf;          // glyph + text fade out as it dissolves
+    const kind = classifyGlyph(a);
+    ctx.save();
+    // Expanding "signal lost" ring(s) — a blip dissolving outward. Additive, grows + fades.
+    ctx.globalCompositeOperation = "lighter";
+    for (const off of [0, 0.5]) {
+      const fr = (lf + off) % 1;
+      const ra = (1 - fr) * 0.42 * fade;
+      if (ra <= 0.01) continue;
+      ctx.strokeStyle = `rgba(206,224,238,${ra.toFixed(3)})`;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 7 + fr * 30, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.globalCompositeOperation = "source-over";
+    // The aircraft itself desaturates to a cool grey and fades (loses colour + signal).
+    const glyphS = base * GLYPH_SCALE[kind] * 0.95;
+    ctx.save();
+    ctx.globalAlpha = fade * 0.85;
+    ctx.translate(p.x, p.y);
+    ctx.rotate(((a.track ?? 0) + (f.cfg.mapRotationDeg ?? 0)) * DEG);
+    drawGlyphStatic(ctx, kind, glyphS, [150, 162, 176], 1);
+    ctx.restore();
+    // Notation: what was lost (callsign + type), fading with the blip.
+    const call = (a.flight || a.hex || "").trim();
+    if (call) {
+      const ty = p.y + 16;
+      ctx.globalAlpha = fade;
+      ctx.font = "600 11px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.lineJoin = "round";
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "rgba(0,0,0,0.6)";
+      ctx.strokeText(`${call} · LOST`, p.x, ty);
+      ctx.fillStyle = "rgba(206,224,238,0.95)";
+      ctx.fillText(`${call} · LOST`, p.x, ty);
+      if (a.typeName) {
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "rgba(0,0,0,0.6)";
+        ctx.strokeText(a.typeName, p.x, ty + LINE_H);
+        ctx.fillStyle = "rgba(180,194,208,0.85)";
+        ctx.fillText(a.typeName, p.x, ty + LINE_H);
+      }
+      ctx.textAlign = "left";
+    }
     ctx.restore();
   }
 }

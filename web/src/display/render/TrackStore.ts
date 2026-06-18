@@ -8,6 +8,8 @@ import type { Sample, Visible } from "./types";
 
 const RENDER_DELAY_MS = 1200; // render ~1.2 s behind the measurement timeline — interpolate
                               // between real fixes when we can; dead-reckon past the newest
+const LOST_BEGIN = 12000;     // unheard this long ⇒ declare the contact lost and start the fade
+const LOST_FADE_MS = 3000;    // fade duration; after this it stops drawing (track kept until prune)
 const DEG = Math.PI / 180;
 
 interface Track {
@@ -157,8 +159,14 @@ export class TrackStore {
     const renderT = Date.now() - RENDER_DELAY_MS;
     const baseMs = Math.max(0, (cfg.trailSeconds ?? 90) * 1000);
     const out: Visible[] = [];
+    const wall = Date.now();
     for (const tr of this.tracks.values()) {
       if (!passesFilter(tr.latest, cfg)) continue;
+      // Contact-lost fade: once a track hasn't been heard for LOST_BEGIN, play a brief fade
+      // (still emitted, frozen at its last real fix) then stop drawing it — but keep the track
+      // alive until prune so a re-acquired contact resumes instead of respawning.
+      const goneMs = wall - tr.lastSeen;
+      if (goneMs > LOST_BEGIN + LOST_FADE_MS) continue; // faded out
       const target = predictPos(tr.hist, tr.latest, renderT);
       if (!target) continue;
       // Critically-damped low-pass toward the (linear) target: smooths the per-fix
@@ -200,6 +208,11 @@ export class TrackStore {
       // Surface a recent takeoff/landing as a render-clock age (so the animation plays
       // when the DELAYED glyph reaches the event, not 1.35 s early).
       const v: Visible = { ...tr.latest, lat: pos.lat, lon: pos.lon, trail };
+      if (goneMs > LOST_BEGIN) {
+        v.lost = (goneMs - LOST_BEGIN) / LOST_FADE_MS; // 0..1
+        const lastFix = tr.hist[tr.hist.length - 1]; // freeze at the last real position (no ghost drift)
+        if (lastFix) { v.lat = lastFix.lat; v.lon = lastFix.lon; }
+      }
       if (tr.transitAt != null) {
         const age = renderT - tr.transitAt;
         if (age >= -200 && age < 2200) {
