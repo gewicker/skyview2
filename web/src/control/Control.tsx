@@ -229,6 +229,21 @@ export default function Control({ config: c, surface, onChange, onPush, onReset,
         </div>
       )}
 
+      {surface === "web" && (
+        <ListSection title="Advanced">
+          <ListRow label="Highlight emergencies" first><Switch value={c.highlightEmergency} onChange={(v) => set({ highlightEmergency: v })} /></ListRow>
+          <ListRow label="Cursor on display"><Switch value={c.showCursor} onChange={(v) => set({ showCursor: v })} /></ListRow>
+          <ListRow label={`Sky time offset ${c.skyTimeOffsetMin > 0 ? "+" : ""}${Math.round((c.skyTimeOffsetMin || 0) / 60)} h`}>
+            <Slider value={c.skyTimeOffsetMin || 0} min={-720} max={720} step={30} onChange={(v) => set({ skyTimeOffsetMin: v })} />
+          </ListRow>
+          <ListRow label="Notable webhook">
+            <input value={c.notableWebhook || ""} placeholder="https://… (Discord/Slack)" onChange={(e) => set({ notableWebhook: e.target.value })}
+              style={{ width: 180, font: "13px system-ui", padding: "6px 8px", borderRadius: 7,
+                border: "1px solid var(--sv-border,#d6d6db)", background: "var(--sv-surface,#fff)", color: "var(--sv-text,#1c1c1e)" }} />
+          </ListRow>
+        </ListSection>
+      )}
+
       <ListSection title="Scenes">
         {scenes.length === 0 && (
           <ListRow label="No saved scenes yet" first><span style={{ font: "13px system-ui", color: "#8a8f98" }}>Save one below</span></ListRow>
