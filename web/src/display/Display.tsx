@@ -143,6 +143,10 @@ export default function Display() {
 
   useEffect(() => { rendererRef.current?.update(state.aircraft); }, [state.now, state.aircraft]);
 
+  // A DOM detail card open (aircraft or transit) → suppress the canvas overhead placard so it
+  // never repaints over the card.
+  useEffect(() => { rendererRef.current?.setCardOpen(!!selected || !!transit); }, [selected, transit]);
+
   // Despawn the tap card when the selected contact leaves range or is panned off-screen.
   useEffect(() => {
     if (!selected) return;
@@ -609,7 +613,7 @@ function TransitCard({ pick, onClose }: { pick: TransitPick; onClose: () => void
   else if (pick.kind === "ferry") { title = pick.title; sub = pick.route || "WA State Ferry"; detail = pick.atDock ? "At dock" : Math.round(pick.speed) + " kt"; }
   else { title = "Bus"; sub = "Metro / Sound Transit · live"; }
   return (
-    <div style={{ position: "absolute", top: 16, right: 16, minWidth: 184,
+    <div style={{ position: "absolute", left: 16, bottom: 160, minWidth: 184,
       background: "rgba(8,12,20,0.92)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12,
       padding: "12px 14px", color: "#dfe7f2" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>

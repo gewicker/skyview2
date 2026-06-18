@@ -52,6 +52,10 @@ export interface FrameContext {
   /** True while a pan/zoom gesture is active — layers render low-detail (skip the
    *  expensive per-segment trails) and the loop runs uncapped for smoothness. */
   interacting?: boolean;
+  /** True while a DOM detail card (aircraft tap-card or transit tap-card) is open. The
+   *  spotlight layer suppresses its auto overhead placard so the canvas never repaints
+   *  over a DOM card. */
+  cardOpen?: boolean;
 }
 
 // A render layer. GL-ready by design: a layer can later swap its draw() to a WebGL

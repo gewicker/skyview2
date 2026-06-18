@@ -42,6 +42,7 @@ export class Renderer {
   private selectedNav = "";                  // tapped navaid/fix/final id
   private lastVisible: Visible[] = [];       // visible set from the last draw (reused by hit-tests)
   private spotDismissAt = 0;                  // last "dismiss overhead card" tap
+  private cardOpen = false;                   // a DOM detail card (aircraft/transit) is open
   private releaseTimer = 0;
   private lastInteractAt = 0;                // for the uncap + low-detail window
 
@@ -146,6 +147,9 @@ export class Renderer {
 
   select(hex: string | null): void { this.selectedHex = hex || ""; }
   selectNav(id: string | null): void { this.selectedNav = id || ""; }
+  /** Tell the renderer whether a DOM detail card is currently open, so the spotlight
+   *  layer can suppress its canvas placard and never paint over it. */
+  setCardOpen(open: boolean): void { this.cardOpen = open; }
   /** Dismiss the auto overhead (spotlight) card for whoever is featured right now. */
   dismissSpotlight(): void { this.spotDismissAt = performance.now(); }
   getView(): View { return this.view(); }
@@ -244,6 +248,7 @@ export class Renderer {
       aircraft: visible, view: v, selectedHex: this.selectedHex || undefined,
       selectedNavId: this.selectedNav || undefined,
       spotDismissAt: this.spotDismissAt || undefined, interacting,
+      cardOpen: this.cardOpen || undefined,
     };
     for (const l of this.layers) l.draw(f);
   }

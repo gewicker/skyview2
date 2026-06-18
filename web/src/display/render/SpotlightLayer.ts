@@ -110,6 +110,9 @@ export class SpotlightLayer implements Layer {
     if (dismissNow) this.dismissedHex = target.hex;
     if (target.hex === this.dismissedHex) return;
     this.dismissedHex = "";
+    // A DOM detail card (aircraft tap-card top-right, transit tap-card bottom-left) owns the
+    // screen; keep the overhead reticle but skip the canvas placard so it never repaints over them.
+    if (f.cardOpen) return;
     this.drawPlacard(f, target, sLat, sLon);
   }
 
