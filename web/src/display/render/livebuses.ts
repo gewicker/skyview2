@@ -24,7 +24,6 @@ const STALE_S = 90;
 const DROP_S = 150;
 
 let started = false;
-let fetchedAt = 0;
 const vehicles = new Map<string, Veh>();
 
 export function startLiveBuses(): void {
@@ -35,7 +34,6 @@ export function startLiveBuses(): void {
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         if (!j || !Array.isArray(j.buses)) return;
-        fetchedAt = Date.now();
         const now = Date.now();
         for (const m of j.buses as BusMsg[]) {
           if (!m.id || (m.lat === 0 && m.lon === 0)) continue;
