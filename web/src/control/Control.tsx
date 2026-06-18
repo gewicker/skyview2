@@ -126,12 +126,6 @@ export default function Control({ config: c, surface, onChange, onPush, onReset,
             <Slider value={c.highwayIntensity ?? 0.6} min={0} max={1} step={0.05} onChange={(v) => set({ highwayIntensity: v })} />
           </ListRow>
         )}
-        <ListRow label="Vessel traffic"><Switch value={c.showVessels} onChange={(v) => set({ showVessels: v })} /></ListRow>
-        {c.showVessels && (
-          <ListRow label={`Vessels ${Math.round((c.vesselIntensity ?? 0.7) * 100)}%`}>
-            <Slider value={c.vesselIntensity ?? 0.7} min={0} max={1} step={0.05} onChange={(v) => set({ vesselIntensity: v })} />
-          </ListRow>
-        )}
         <ListRow label="Ambient labels (calm)"><Switch value={c.ambientMode !== false} onChange={(v) => set({ ambientMode: v })} /></ListRow>
         <ListRow label="Ambient Night preset">
           <Btn onClick={() => set({

@@ -23,34 +23,46 @@ export class FerryLayer implements Layer {
       const p = f.cam.project(v.lat, v.lon);
       if (p.x < -16 || p.x > w + 16 || p.y < -16 || p.y > h + 16) continue;
       const a = v.fade;
-      // wake from the lagging anchor (collapses at the dock)
-      if (!v.atDock) {
-        const ap = f.cam.project(v.alat, v.alon);
+      const ap = f.cam.project(v.alat, v.alon);
+      const dx = p.x - ap.x, dy = p.y - ap.y;
+      const moving = !v.atDock && dx * dx + dy * dy > 1.5; // heading derived from screen motion (rotation-proof)
+      const ang = moving ? Math.atan2(dy, dx) : 0;
+      // wake from the lagging anchor (only underway)
+      if (moving) {
         const grad = ctx.createLinearGradient(ap.x, ap.y, p.x, p.y);
-        grad.addColorStop(0, `rgba(220,235,245,0)`);
-        grad.addColorStop(1, `rgba(220,235,245,${0.4 * a})`);
+        grad.addColorStop(0, "rgba(225,238,248,0)");
+        grad.addColorStop(1, `rgba(225,238,248,${0.45 * a})`);
         ctx.strokeStyle = grad;
-        ctx.lineWidth = 2.4;
+        ctx.lineWidth = 2.6;
         ctx.beginPath();
         ctx.moveTo(ap.x, ap.y);
         ctx.lineTo(p.x, p.y);
         ctx.stroke();
       }
-      // soft halo
+      // soft halo (depth without glow)
       ctx.beginPath();
       ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(${HULL},${0.2 * a})`;
       ctx.fill();
-      // hull marker (bigger + brighter so it reads off the teal water)
+      // a boat HULL — pointed bow toward travel (flat-stern; oriented from motion, level when docked)
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(ang);
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+      ctx.moveTo(8, 0);       // bow
+      ctx.lineTo(1.5, -3.4);
+      ctx.lineTo(-6, -2.8);   // stern
+      ctx.lineTo(-6, 2.8);
+      ctx.lineTo(1.5, 3.4);
+      ctx.closePath();
       ctx.fillStyle = `rgba(${HULL},${0.95 * a})`;
       ctx.fill();
-      // bright near-white core — the visible "there's a boat here" point
+      // bright deckhouse core — the "there's a boat here" point
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 2.6, 0, Math.PI * 2);
+      ctx.arc(-0.5, 0, 1.8, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(238,246,252,${0.98 * a})`;
       ctx.fill();
+      ctx.restore();
     }
     ctx.restore();
   }

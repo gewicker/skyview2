@@ -22,7 +22,6 @@ import { RailLayer } from "./render/RailLayer";
 import { TrainLayer } from "./render/TrainLayer";
 import { BusLayer } from "./render/BusLayer";
 import { FerryLayer } from "./render/FerryLayer";
-import { VesselLayer } from "./render/VesselLayer";
 import { AIRPORTS } from "./render/airports";
 import { LeaderLayer } from "./render/LeaderLayer";
 import { AircraftLayer } from "./render/AircraftLayer";
@@ -120,8 +119,7 @@ export default function Display() {
     r.use(new StaticOverlayLayer([new PlaceLabelsLayer()], (f) => f.cfg.mapStyle));
     r.use(new MarineLayer());  // coastal fog (weather) — under the traffic, off by default
     r.use(new HighwayLayer()); // synthetic road traffic (ambient) — above fog, off by default
-    r.use(new VesselLayer());  // synthetic Sound vessel traffic (ambient) — off by default
-    r.use(new FerryLayer());   // live WA State Ferries (WSF) — real boats, above the synthetic vessels
+    r.use(new FerryLayer());   // live WA State Ferries (WSF) — real boats (deprecated the synthetic VesselLayer)
     r.use(new RailLayer());    // Link light rail line + stations — ABOVE the synthetic car/vessel wash
                                // (real infrastructure shouldn't be buried by the congestion ribbon),
                                // still below trains/aircraft (brightness law)
