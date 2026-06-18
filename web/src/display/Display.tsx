@@ -18,6 +18,7 @@ import { RouteLayer } from "./render/RouteLayer";
 import { MarineLayer } from "./render/MarineLayer";
 import { RadarLayer } from "./render/RadarLayer";
 import { HighwayLayer } from "./render/HighwayLayer";
+import { RailLayer } from "./render/RailLayer";
 import { VesselLayer } from "./render/VesselLayer";
 import { AIRPORTS } from "./render/airports";
 import { LeaderLayer } from "./render/LeaderLayer";
@@ -114,6 +115,7 @@ export default function Display() {
     r.use(new NavaidLayer());    // VOR roses / fixes (under traffic), off by default
     r.use(new StaticOverlayLayer([new PlaceLabelsLayer()], (f) => f.cfg.mapStyle));
     r.use(new MarineLayer());  // coastal fog (weather) — under the traffic, off by default
+    r.use(new RailLayer());    // Link light rail line + stations (static GPS/OSM, above-ground)
     r.use(new HighwayLayer()); // synthetic road traffic (ambient) — above fog, off by default
     r.use(new VesselLayer());  // synthetic Sound vessel traffic (ambient) — off by default
     r.use(new TrailLayer());

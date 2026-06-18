@@ -154,6 +154,9 @@ type Config struct {
 	ShowVessels    bool    `json:"showVessels"`
 	VesselIntensity float64 `json:"vesselIntensity"`
 
+	// Link light rail line + stations (GPS/OSM geometry, above-ground) — static, no live trains.
+	ShowRail bool `json:"showRail"`
+
 	// Spotlight.
 	ShowSpotlight     bool    `json:"showSpotlight"`
 	SpotlightRadiusMi float64 `json:"spotlightRadiusMi"`
@@ -201,7 +204,7 @@ func Default() Config {
 			Speed: true, Destination: true, Registration: false},
 		ShowAirport: true, ShowApproaches: true, ShowFinal: true, ShowTraffic: true,
 		ShowHome: true, ShowRelative: true, HighlightEmergency: true,
-		ShowNotable: true, NotableFlash: true, ShowWinds: true, ShowPhotos: true,
+		ShowNotable: true, NotableFlash: true, ShowWinds: true, ShowPhotos: true, ShowRail: true,
 		BurnInOrbit: false, // IPS panel — no burn-in risk
 		ShowSpotlight: true, SpotlightRadiusMi: 15, SpotlightLat: 47.618431, SpotlightLon: -122.191076,
 		ProcRasterOpacity: 0.5, // overlays off by default; opacity used when raster enabled

@@ -46,6 +46,7 @@ export interface Config {
   showRadar: boolean; radarOpacity: number; // keyless precip radar
   showHighways: boolean; highwayIntensity: number; // synthetic road traffic
   showVessels: boolean; vesselIntensity: number; // synthetic Sound vessel traffic
+  showRail: boolean; // Link light rail line + stations (static, GPS/OSM)
 
   monitorMode: MonitorMode; lightsOutHour: number; lightsOutBrightness: number; muteUntil: number; showCursor: boolean;
 }
