@@ -43,6 +43,26 @@ function lateTint(rgb: RGB3, devSec: number): RGB3 {
 }
 const rgbStr = (c: [number, number, number]) => `${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])}`;
 
+// A horizontal capsule (railcar body) of total length L and radius r, centered at the origin —
+// straight sides with semicircular caps. Caller sets fill/stroke + the rotation.
+function capsule(ctx: CanvasRenderingContext2D, L: number, r: number): void {
+  const hx = Math.max(0, L / 2 - r);
+  ctx.beginPath();
+  ctx.moveTo(-hx, -r);
+  ctx.lineTo(hx, -r);
+  ctx.arc(hx, 0, r, -Math.PI / 2, Math.PI / 2);    // right cap
+  ctx.lineTo(-hx, r);
+  ctx.arc(-hx, 0, r, Math.PI / 2, Math.PI * 1.5);  // left cap
+  ctx.closePath();
+}
+
+// Stable 0..1 phase offset from a vehicle id, so each car's shimmer drifts out of sync.
+function seedNum(id: string): number {
+  let s = 0;
+  for (let i = 0; i < id.length; i++) s = (s + id.charCodeAt(i) * 7) % 100;
+  return s / 100;
+}
+
 export class TrainLayer implements Layer {
   readonly name = "trains";
 
@@ -81,16 +101,38 @@ export class TrainLayer implements Layer {
       ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(${base},${0.22 * a})`;
       ctx.fill();
-      // solid bead
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${base},${0.95 * a})`;
-      ctx.fill();
-      // bright measured core
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(232,246,255,${0.98 * a})`;
-      ctx.fill();
+      // Oriented RAILCAR (capsule + lit window band) when moving; a measured bead when dwelling at
+      // a platform (heading is unknown at a standstill). The window band carries an along-track
+      // shimmer — a soft highlight gliding the car's length, calm and continuous (never a strobe).
+      const dx = p.x - ap.x, dy = p.y - ap.y;
+      if (dx * dx + dy * dy > 1.2) {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(Math.atan2(dy, dx));
+        const L = 13, r = 2.7, hx = L / 2 - r;
+        capsule(ctx, L, r);
+        ctx.fillStyle = `rgba(${base},${0.95 * a})`;
+        ctx.fill();
+        // lit window band (the measured core, stretched along the car)
+        ctx.fillStyle = `rgba(232,246,255,${0.9 * a})`;
+        ctx.fillRect(-hx, -0.9, hx * 2, 1.8);
+        // along-track shimmer gliding nose→tail
+        const frac = (f.t * 0.5 + seedNum(t.id)) % 1;
+        ctx.beginPath();
+        ctx.arc(-hx + 2 * hx * frac, 0, 1.5, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,255,255,${0.5 * a})`;
+        ctx.fill();
+        ctx.restore();
+      } else {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${base},${0.95 * a})`;
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(232,246,255,${0.98 * a})`;
+        ctx.fill();
+      }
     }
 
     // --- SIMULATED trains: hollow scheduled beads, only where there's no live coverage --- //
@@ -111,12 +153,22 @@ export class TrainLayer implements Layer {
       ctx.moveTo(tp.x, tp.y);
       ctx.lineTo(p.x, p.y);
       ctx.stroke();
-      // hollow ring (no filled core) marks "scheduled, not live"
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+      // hollow railcar outline (no filled core) marks "scheduled, not live"
       ctx.strokeStyle = `rgba(${base},0.75)`;
       ctx.lineWidth = 1.4;
-      ctx.stroke();
+      const dxs = p.x - tp.x, dys = p.y - tp.y;
+      if (dxs * dxs + dys * dys > 1.2) {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(Math.atan2(dys, dxs));
+        capsule(ctx, 12, 2.5);
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+        ctx.stroke();
+      }
     }
 
     ctx.restore();

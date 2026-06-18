@@ -20,6 +20,7 @@ interface Veh {
 }
 
 export interface LiveTrain {
+  id: string;
   line: string;
   lat: number; lon: number;
   alat: number; alon: number;   // tail anchor
@@ -84,11 +85,11 @@ export function tickLiveTrains(dt: number): void {
 export function liveTrains(): LiveTrain[] {
   const now = Date.now();
   const out: LiveTrain[] = [];
-  for (const v of vehicles.values()) {
+  for (const [id, v] of vehicles) {
     const age = (now - v.lastSeen) / 1000;
     const fade = age <= STALE_S ? 1 : age >= DROP_S ? 0 : 1 - (age - STALE_S) / (DROP_S - STALE_S);
     if (fade <= 0) continue;
-    out.push({ line: v.line, lat: v.lat, lon: v.lon, alat: v.alat, alon: v.alon, devSec: v.devSec, fade });
+    out.push({ id, line: v.line, lat: v.lat, lon: v.lon, alat: v.alat, alon: v.alon, devSec: v.devSec, fade });
   }
   return out;
 }

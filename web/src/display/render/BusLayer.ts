@@ -55,16 +55,19 @@ export class BusLayer implements Layer {
       ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(${BUS},${0.18 * a})`;
       ctx.fill();
-      // bead
+      // a small bus CHIP oriented to heading (a stubby vehicle, not a dot) with a bright
+      // windshield core at the front. Heading from screen motion; level when stopped.
+      const dx = p.x - ap.x, dy = p.y - ap.y;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(dx * dx + dy * dy > 0.8 ? Math.atan2(dy, dx) : 0);
+      ctx.fillStyle = `rgba(${BUS},${0.88 * a})`;
+      ctx.fillRect(-2.2, -1.5, 4.4, 3.0);
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 2.6, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${BUS},${0.85 * a})`;
-      ctx.fill();
-      // small bright core
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 1.3, 0, Math.PI * 2);
+      ctx.arc(1.3, 0, 1.0, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(238,234,255,${0.95 * a})`;
       ctx.fill();
+      ctx.restore();
     }
     ctx.restore();
   }

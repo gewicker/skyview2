@@ -26,6 +26,16 @@ const GROUND_RGB: RGB = [200, 122, 60]; // subdued warm — ground/apron
 const MORPH_MS = 1000;    // glyph crossfade between ground chevron and airborne silhouette
 const FLOURISH_MS = 2200; // one-time touchdown ripple+smoke / liftoff glow+streak (longer = easier to catch)
 
+// Aircraft white-strobe comfort/accessibility ceiling (see docs/STROBE-INTENSITY-DESIGN.md). One
+// eased flash per ~period; night peak is LOWER than day (dark room → less absolute brightness reads
+// as bright); radius clamped so a zoomed-in glyph can't floodlight; the authentic double-flash is
+// reserved for the featured/tapped aircraft so any screen region stays well under 3 flashes/second.
+const STROBE_PERIOD_S = 1.1;       // one strobe cycle
+const STROBE_PULSE_MS = 140;       // single eased pulse width (day); widens at night
+const STROBE_PEAK_DAY = 0.85;
+const STROBE_PEAK_NIGHT = 0.7;
+const STROBE_RADIUS_MAX_PX = 5;    // hard cap on the strobe core radius
+
 // Label widths were measured for every line of every aircraft every frame; the strings only
 // change ~1 Hz (and labels use one fixed font here), so cache them.
 const _labelW = new Map<string, number>();
@@ -153,6 +163,17 @@ export class AircraftLayer implements Layer {
       const tp = tAge != null && tAge >= 0 && tAge < MORPH_MS ? tAge / MORPH_MS : 1;
       const morphing = tp < 1;
 
+      // White-strobe gate: full authentic double-flash only on the tapped/featured aircraft (2),
+      // a single soft pulse for close traffic inside the spotlight ring (1), and no white strobe
+      // for distant ambient traffic (0) — which keeps the night sky calm and any screen region
+      // under the 3-flash/s accessibility cap. (Steady position lights + red beacon still carry
+      // the "this is an aircraft" read on everyone.)
+      const sLat = f.cfg.spotlightLat ?? f.cfg.centerLat;
+      const sLon = f.cfg.spotlightLon ?? f.cfg.centerLon;
+      const sRad = f.cfg.spotlightRadiusMi || 15;
+      const sdx = (a.lon - sLon) * 69 * Math.cos(sLat * DEG), sdy = (a.lat - sLat) * 69;
+      const strobeMode = a.hex === f.selectedHex ? 2 : (sdx * sdx + sdy * sdy <= sRad * sRad ? 1 : 0);
+
       ctx.save();
       ctx.translate(p.x, p.y);
       // Heading the glyph points: airborne uses the reported track (reliable from ADS-B
@@ -166,7 +187,7 @@ export class AircraftLayer implements Layer {
       ctx.rotate((headingDeg + (f.cfg.mapRotationDeg ?? 0)) * DEG);
       if (ground) {
         if (morphing && a.transitGround === true) {
-          this.airborne(f, kind, rgb, glyphS, glowS, 1 - tp, seedFor(a.hex), 1 + 0.25 * (1 - tp));
+          this.airborne(f, kind, rgb, glyphS, glowS, 1 - tp, seedFor(a.hex), 1 + 0.25 * (1 - tp), strobeMode);
           drawGroundMarker(ctx, kind, rgb, base, a.gs ?? 0, a.hex === f.selectedHex, tp, 0.6 + 0.4 * tp);
         } else {
           drawGroundMarker(ctx, kind, rgb, base, a.gs ?? 0, a.hex === f.selectedHex);
@@ -175,9 +196,9 @@ export class AircraftLayer implements Layer {
         if (morphing && a.transitGround === false) {
           drawGroundMarker(ctx, kind, rgb, base, a.gs ?? 0, a.hex === f.selectedHex, 1 - tp, 1);
           // Rotation/lift-off pop: grow in with a mid-morph scale overshoot.
-          this.airborne(f, kind, rgb, glyphS, glowS, tp, seedFor(a.hex), 0.6 + 0.4 * tp + 0.2 * Math.sin(tp * Math.PI));
+          this.airborne(f, kind, rgb, glyphS, glowS, tp, seedFor(a.hex), 0.6 + 0.4 * tp + 0.2 * Math.sin(tp * Math.PI), strobeMode);
         } else {
-          this.airborne(f, kind, rgb, glyphS, glowS, 1, seedFor(a.hex), 1);
+          this.airborne(f, kind, rgb, glyphS, glowS, 1, seedFor(a.hex), 1, strobeMode);
         }
       }
       // Landing light: on final to a PREDICTED runway, the nose light comes on — a warm forward
@@ -306,6 +327,7 @@ export class AircraftLayer implements Layer {
   private airborne(
     f: FrameContext, kind: ReturnType<typeof classifyGlyph>, rgb: RGB,
     glyphS: number, glowS: number, fade: number, seed: number, scale: number,
+    strobeMode = 0,
   ): void {
     const ctx = f.ctx;
     ctx.save();
@@ -329,7 +351,7 @@ export class AircraftLayer implements Layer {
     const sprite = getGlyphSprite(kind, rgb, 1, glyphS, f.dpr);
     ctx.drawImage(sprite.canvas, -sprite.half, -sprite.half, sprite.half * 2, sprite.half * 2);
     if (hasSpinners(kind)) drawGlyphSpinners(ctx, kind, glyphS, rgb, 1, f.t, seed);
-    if (this.lightsOn) drawNavLights(ctx, glyphS, lightAnchors(kind), seed, f.t, this.nf);
+    if (this.lightsOn) drawNavLights(ctx, glyphS, lightAnchors(kind), seed, f.t, this.nf, strobeMode);
     ctx.restore();
   }
 
@@ -671,12 +693,22 @@ function lamp(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, c:
   ctx.fill();
 }
 
+// A single eased flash envelope: 0 → 1 → 0 across [0, w] of the cycle phase `ph` (a smoothstepped
+// triangle), and 0 outside that window. Gives the strobe a soft "breath-flash" instead of a hard
+// snap, which is what keeps it calm on an always-on panel.
+function pulseEnv(ph: number, w: number): number {
+  if (ph < 0 || ph > w) return 0;
+  const x = ph / w;                             // 0..1 across the pulse
+  const tri = x < 0.5 ? x * 2 : (1 - x) * 2;    // 0→1→0 triangle
+  return tri * tri * (3 - 2 * tri);             // smoothstep in/out
+}
+
 // External lights on an airborne aircraft, MOUNTED on the real airframe via per-kind anchors
 // (`a`): red (port) + green (starboard) ride the true swept wingtips, white sits on the tail
 // cone, a red anti-collision beacon SWEEPS like a rotating lens, and white xenon STROBES
 // double-flash off the wingtips. Seeded per aircraft so the sky twinkles out of sync. `nf` is
 // the night factor (0 day → 1 night); colours run day+night and bloom brighter after dusk.
-function drawNavLights(ctx: CanvasRenderingContext2D, glyphS: number, a: LightAnchors, seed: number, t: number, nf: number): void {
+function drawNavLights(ctx: CanvasRenderingContext2D, glyphS: number, a: LightAnchors, seed: number, t: number, nf: number, strobeMode = 0): void {
   const lvl = 0.18 + 0.82 * nf; // steady lights nearly vanish by day (were 0.5 = sub-2px daytime noise), bloom at night
   const wx = a.wingX * glyphS, wy = a.wingY * glyphS;
   // Light dot radii SCALE with the glyph (was a constant 1.3px that vanished at small size and
@@ -692,19 +724,33 @@ function drawNavLights(ctx: CanvasRenderingContext2D, glyphS: number, a: LightAn
   const bp = (t * 0.85 + seed) % 1;
   const b = bp < 0.55 ? Math.pow(Math.max(0, Math.sin(bp * Math.PI * 2)), 3) : 0;
   if (b > 0.002) lamp(ctx, 0, a.beaconY * glyphS, lr * 0.95 + b * lr * 1.1, `rgba(255,40,32,${(0.34 * b * lvl).toFixed(3)})`);
-  // White wingtip strobes: real double-flash (~1.1 s), with a hot capacitor-dump overshoot on
-  // the leading frame of each flash and a faint xenon-blue ring, then snap to baseline.
-  const ph = (t * 0.9 + seed) % 1;
-  if (ph < 0.04 || (ph > 0.1 && ph < 0.14)) {
-    const lead = ph < 0.012 || (ph > 0.1 && ph < 0.112);
-    const sbase = Math.max(2.6, glyphS * 0.22); // flash floor enlarged so the double-flash is catchable across a room
-    const sr = lead ? sbase * 1.25 : sbase;
-    const sa = (lead ? 0.95 : 0.3 + 0.65 * nf).toFixed(3);
-    lamp(ctx, -wx, wy, sr, `rgba(255,255,255,${sa})`);
-    lamp(ctx, wx, wy, sr, `rgba(255,255,255,${sa})`);
-    if (lead) {
-      lamp(ctx, -wx, wy, sbase * 1.7, "rgba(200,225,255,0.5)");
-      lamp(ctx, wx, wy, sbase * 1.7, "rgba(200,225,255,0.5)");
+  // White wingtip strobe — eased, night-dimmed, and gated by attention (strobeMode): 0 = none
+  // (distant ambient, keeps the night calm), 1 = a single soft pulse (close traffic), 2 = the
+  // authentic double-flash (featured/tapped). Replaces the old hard 0.95 lead frame that ignored
+  // nf and was the brightest, most fatiguing thing on the panel at night. See STROBE doc.
+  if (strobeMode > 0) {
+    const peak = STROBE_PEAK_DAY - (STROBE_PEAK_DAY - STROBE_PEAK_NIGHT) * nf; // lower at night
+    const sr = Math.min(glyphS * 0.22, STROBE_RADIUS_MAX_PX);
+    const ph = (t / STROBE_PERIOD_S + seed) % 1; // 0..1 within the cycle
+    const w = (STROBE_PULSE_MS * (1 + 0.5 * nf)) / 1000 / STROBE_PERIOD_S; // pulse width (cycle frac), wider at night
+    let env: number;
+    if (strobeMode === 2) {
+      const wf = Math.min(w, 0.05 + 0.03 * nf); // crisp sub-pulses for the real double-flash
+      env = Math.max(pulseEnv(ph, wf), pulseEnv(ph - 0.11, wf));
+    } else {
+      env = pulseEnv(ph, w);
+    }
+    if (env > 0.002) {
+      const sa = (peak * env).toFixed(3);
+      lamp(ctx, -wx, wy, sr, `rgba(255,255,255,${sa})`);
+      lamp(ctx, wx, wy, sr, `rgba(255,255,255,${sa})`);
+      // Xenon-blue bloom: day-only (it is pure glare at night), fading out by nf=0.5.
+      if (nf < 0.5) {
+        const ha = (0.25 * (1 - 2 * nf) * env).toFixed(3);
+        const hr = Math.min(glyphS * 0.33, STROBE_RADIUS_MAX_PX * 1.5);
+        lamp(ctx, -wx, wy, hr, `rgba(200,225,255,${ha})`);
+        lamp(ctx, wx, wy, hr, `rgba(200,225,255,${ha})`);
+      }
     }
   }
   ctx.globalCompositeOperation = "source-over";

@@ -183,6 +183,10 @@ pattern, rail geometry last among the core work because OSM stitching is the fid
   Proposal being drafted to `docs/STROBE-INTENSITY-DESIGN.md`.
 - **Underground light rail — design-expert review (BROKEN).** See Batch 5; proposal in
   `docs/UNDERGROUND-RAIL-DESIGN.md`.
+- **Predict + smooth out light-rail animations (George 2026-06-18).** Same work as the
+  underground-rail prediction: arc-length dead-reckoning + timetable pacing in `path.ts` so trains
+  glide smoothly AND schedule-accurately between sparse OBA polls (above ground too, not just
+  tunnels). Covered by the underground-rail implementation task.
 
 ## Cross-cutting reminders (from memory / handoff)
 - **Compile gate is the Pi** (`make pi`); the Cowork bash mount is stale on edits and can't build
