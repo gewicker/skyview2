@@ -64,7 +64,16 @@ func main() {
 			return feed.View{Lat: c.CenterLat, Lon: c.CenterLon, RadiusMiles: c.RadiusMiles}
 		})
 	}
-	enr := enrich.New(filepath.Join(*dataDir, "route-cache.json"), envFloat("ROUTE_CACHE_HOURS", 12))
+	// adsbdb (free) baseline + AeroDataBox (RapidAPI, keyed) targeted upgrade. The AeroDataBox key
+	// is held server-side; Basic plan is 600 units/month so we cap spend (monthly units + daily
+	// calls) and only look up nearby commercial flights whose route is uncertain/missing.
+	enr := enrich.New(filepath.Join(*dataDir, "route-cache.json"), envFloat("ROUTE_CACHE_HOURS", 12),
+		env("AERODATABOX_KEY", "53ccb61ac2msh968e55d433a3577p198057jsn8caf3b025ce3"),
+		envInt("ADB_MONTHLY_UNITS", 550), envInt("ADB_DAILY_CALLS", 18))
+	enr.UseView(func() (float64, float64, float64) {
+		c := cfg.Get()
+		return c.CenterLat, c.CenterLon, c.RadiusMiles
+	})
 
 	// Live highway congestion (WSDOT Traffic Flow). The AccessCode is free and not secret
 	// (per WSDOT + George), so it's embedded as the default; env can still override. It stays
@@ -218,6 +227,15 @@ func envMs(key string, def time.Duration) time.Duration {
 func envFloat(key string, def float64) float64 {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.ParseFloat(v, 64); err == nil && n > 0 {
+			return n
+		}
+	}
+	return def
+}
+
+func envInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			return n
 		}
 	}

@@ -30,11 +30,28 @@ type sticky struct {
 type Enricher struct {
 	cache  *cache
 	sticky map[string]sticky
+	view   func() (lat, lon, radiusMi float64) // home center + radius (gates AeroDataBox spend)
 }
 
-// New returns an enricher with its adsbdb cache at cachePath (ttlHours = route TTL).
-func New(cachePath string, ttlHours float64) *Enricher {
-	return &Enricher{cache: newCache(cachePath, ttlHours), sticky: map[string]sticky{}}
+// New returns an enricher with its adsbdb cache at cachePath (ttlHours = route TTL). adbKey enables
+// the AeroDataBox upgrade source; adbMonthlyUnits/adbDailyCalls bound its free-tier spend.
+func New(cachePath string, ttlHours float64, adbKey string, adbMonthlyUnits, adbDailyCalls int) *Enricher {
+	return &Enricher{cache: newCache(cachePath, ttlHours, adbKey, adbMonthlyUnits, adbDailyCalls), sticky: map[string]sticky{}}
+}
+
+// UseView wires the home center + radius so AeroDataBox lookups are limited to nearby flights.
+func (e *Enricher) UseView(fn func() (lat, lon, radiusMi float64)) { e.view = fn }
+
+// nearHome reports whether the aircraft is within the configured radius of home.
+func (e *Enricher) nearHome(ac *aircraft.Aircraft) bool {
+	if e.view == nil || ac.Lat == nil || ac.Lon == nil {
+		return false
+	}
+	lat, lon, radius := e.view()
+	if radius <= 0 {
+		radius = 60
+	}
+	return distNM(*ac.Lat, *ac.Lon, lat, lon) <= radius
 }
 
 // Run flushes the disk cache periodically + on shutdown.
@@ -42,6 +59,7 @@ func (e *Enricher) Run(ctx context.Context) { e.cache.runFlush(ctx) }
 
 // Process enriches a snapshot in place-ish (returns the same slice, mutated).
 func (e *Enricher) Process(list []aircraft.Aircraft, now int64) []aircraft.Aircraft {
+	adbSpent := 0 // cap NEW AeroDataBox lookups per tick so a startup burst can't drain the day
 	for i := range list {
 		ac := &list[i]
 
@@ -111,9 +129,56 @@ func (e *Enricher) Process(list []aircraft.Aircraft, now int64) []aircraft.Aircr
 		// only (the sticky cache above keeps the RAW route), so it re-evaluates fresh each tick
 		// from current heading and can't oscillate. Corrects reversed legs; flags the rest.
 		verifyRoute(ac)
+
+		// AeroDataBox upgrade (keyed, quota-limited): spend a call only on an enroute commercial
+		// flight near home whose adsbdb route is uncertain or missing. A hit is authoritative —
+		// today's actual leg + equipment — so it overrides and clears the uncertainty flag.
+		if cs != "" {
+			if r, ok := e.cache.adbCached(cs, now); ok {
+				if r != nil {
+					applyADB(ac, r) // reuse the cached call: route + equipment + (later) the tap card
+				}
+			} else if adbSpent < maxADBPerTick && commercialCallsign(cs) && e.nearHome(ac) &&
+				(ac.RouteUncertain || ac.Destination == "") {
+				e.cache.fetchADB(cs, now) // budget-guarded; result reused for the rest of the day
+				adbSpent++
+			}
+		}
 	}
 	e.prune(now)
 	return list
+}
+
+// maxADBPerTick bounds new AeroDataBox lookups kicked off in a single Process pass.
+const maxADBPerTick = 3
+
+// applyADB overlays an AeroDataBox result (today's actual leg + scheduled equipment) onto the
+// aircraft. It's authoritative, so it overrides the schedule-DB origin/dest and clears the
+// geometry-uncertainty flag; equipment fills only gaps (the observed airframe stays primary).
+func applyADB(ac *aircraft.Aircraft, r *RouteInfo) {
+	ac.Origin, ac.Destination = r.Origin, r.Destination
+	if r.OriginName != "" {
+		ac.OriginName = r.OriginName
+	}
+	if r.DestName != "" {
+		ac.DestName = r.DestName
+	}
+	if r.OriginLat != nil {
+		ac.OriginLat, ac.OriginLon = r.OriginLat, r.OriginLon
+	}
+	if r.DestLat != nil {
+		ac.DestLat, ac.DestLon = r.DestLat, r.DestLon
+	}
+	if r.Airline != "" && ac.Airline == "" {
+		ac.Airline = r.Airline
+	}
+	if r.Reg != "" && ac.Registration == "" {
+		ac.Registration = r.Reg
+	}
+	if r.Model != "" && ac.TypeName == "" {
+		ac.TypeName = r.Model
+	}
+	ac.RouteUncertain = false
 }
 
 // verifyRoute cross-checks origin/dest (from the callsign schedule DB) against the aircraft's own

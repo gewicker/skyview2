@@ -30,6 +30,8 @@ type RouteInfo struct {
 	OriginLon   *float64 `json:"originLon,omitempty"`
 	DestLat     *float64 `json:"destLat,omitempty"`
 	DestLon     *float64 `json:"destLon,omitempty"`
+	Reg         string   `json:"reg,omitempty"`   // scheduled equipment (AeroDataBox only)
+	Model       string   `json:"model,omitempty"` // scheduled aircraft model (AeroDataBox only)
 }
 
 // AircraftInfo is resolved airframe data.
@@ -49,25 +51,39 @@ type acEntry struct {
 type cacheFile struct {
 	Routes   map[string]routeEntry `json:"routes"`
 	Aircraft map[string]acEntry    `json:"aircraft"`
+	ADB      map[string]routeEntry `json:"adb"`   // AeroDataBox routes (keyed by callsign)
+	Quota    *quotaState           `json:"quota"` // persisted AeroDataBox unit/call budget
 }
 
 type cache struct {
 	mu       sync.Mutex
 	routes   map[string]routeEntry
 	aircraft map[string]acEntry
+	adb      map[string]routeEntry // AeroDataBox results (separate from free adsbdb routes)
 	inflight map[string]bool
 	dirty    bool
 	path     string
 	ttl      time.Duration
 	client   *http.Client
+
+	// AeroDataBox (RapidAPI) — keyed, quota-limited upgrade source. Empty key = disabled.
+	adbKey          string
+	adbMonthlyUnits int
+	adbDailyCalls   int
+	adbTTL          time.Duration // longer than the adsbdb TTL: each scarce call is reused all day
+	q               quotaState
 }
 
-func newCache(path string, ttlHours float64) *cache {
+func newCache(path string, ttlHours float64, adbKey string, adbMonthlyUnits, adbDailyCalls int) *cache {
 	c := &cache{
-		routes: map[string]routeEntry{}, aircraft: map[string]acEntry{},
+		routes: map[string]routeEntry{}, aircraft: map[string]acEntry{}, adb: map[string]routeEntry{},
 		inflight: map[string]bool{}, path: path,
-		ttl:    time.Duration(ttlHours * float64(time.Hour)),
-		client: &http.Client{Timeout: 8 * time.Second},
+		ttl:             time.Duration(ttlHours * float64(time.Hour)),
+		client:          &http.Client{Timeout: 8 * time.Second},
+		adbKey:          adbKey,
+		adbMonthlyUnits: adbMonthlyUnits,
+		adbDailyCalls:   adbDailyCalls,
+		adbTTL:          18 * time.Hour, // a flight's leg is stable for its whole visit; reuse the call
 	}
 	if b, err := os.ReadFile(path); err == nil {
 		var f cacheFile
@@ -77,6 +93,12 @@ func newCache(path string, ttlHours float64) *cache {
 			}
 			if f.Aircraft != nil {
 				c.aircraft = f.Aircraft
+			}
+			if f.ADB != nil {
+				c.adb = f.ADB
+			}
+			if f.Quota != nil {
+				c.q = *f.Quota
 			}
 		}
 	}
@@ -248,7 +270,8 @@ func (c *cache) flush() {
 		return
 	}
 	c.dirty = false
-	f := cacheFile{Routes: c.routes, Aircraft: c.aircraft}
+	q := c.q
+	f := cacheFile{Routes: c.routes, Aircraft: c.aircraft, ADB: c.adb, Quota: &q}
 	c.mu.Unlock()
 	b, err := json.Marshal(f)
 	if err != nil {
