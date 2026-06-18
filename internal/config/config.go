@@ -154,7 +154,8 @@ type Config struct {
 	ShowVessels    bool    `json:"showVessels"`
 	VesselIntensity float64 `json:"vesselIntensity"`
 
-	// Link light rail line + stations (GPS/OSM geometry, above-ground) — static, no live trains.
+	// Link light rail: line + stations (GPS/OSM geometry) plus trains — live positions from
+	// the OBA feed when available, else timetable-simulated. One toggle covers all three.
 	ShowRail bool `json:"showRail"`
 
 	// Spotlight.

@@ -149,6 +149,17 @@ export class MapLayer implements Layer {
     sx.globalCompositeOperation = "screen";
     sx.fillStyle = "rgba(8,24,38,0.22)";
     sx.fillRect(0, 0, w, h);
+    // Atmospheric perspective: a vertical luminance ramp — knock the top down and cool it
+    // (far/high), leave the foreground full and faintly warm (near). Turns the flat, evenly-lit
+    // tile field into a graded space so the bright glyphs read as sitting IN a world, not ON a
+    // texture. Baked into the cached buffer → zero per-frame cost.
+    sx.globalCompositeOperation = "multiply";
+    const vert = sx.createLinearGradient(0, 0, 0, h);
+    vert.addColorStop(0, "rgb(150,170,195)");  // top ~ −40%, cooled
+    vert.addColorStop(0.5, "rgb(214,224,233)");
+    vert.addColorStop(1, "rgb(255,251,246)");  // foreground ~ full, faint warm
+    sx.fillStyle = vert;
+    sx.fillRect(0, 0, w, h);
     sx.restore();
   }
 
@@ -169,16 +180,21 @@ export class MapLayer implements Layer {
   private cinematic(sx: CanvasRenderingContext2D, w: number, h: number, deep: boolean): void {
     sx.save();
     sx.globalCompositeOperation = "lighter";
-    const glow = sx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.hypot(w, h) * 0.45);
+    // Glow pool biased slightly DOWN (h*0.56) so the brightest part of the map sits where the
+    // foreground/home is — "the world is lit from where you are."
+    const gy = h * 0.56;
+    const glow = sx.createRadialGradient(w / 2, gy, 0, w / 2, gy, Math.hypot(w, h) * 0.45);
     glow.addColorStop(0, deep ? "rgba(26,86,108,0.18)" : "rgba(22,72,92,0.16)");
     glow.addColorStop(1, "rgba(0,0,0,0)");
     sx.fillStyle = glow;
     sx.fillRect(0, 0, w, h);
     sx.globalCompositeOperation = "source-over";
-    // Gentler vignette + wider clear center so corner traffic isn't penalized (was 0.36/0.5).
+    // Vignette toward a dark navy-teal (NOT pure black — black corners deaden and read as a cheap
+    // filter); the corner color carries the scene's temperature so the frame reads as one
+    // continuous atmosphere. Wide clear center so corner traffic isn't penalized.
     const vig = sx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.44, w / 2, h / 2, Math.hypot(w, h) * 0.62);
-    vig.addColorStop(0, "rgba(0,0,0,0)");
-    vig.addColorStop(1, "rgba(0,0,0,0.36)");
+    vig.addColorStop(0, "rgba(6,14,22,0)");
+    vig.addColorStop(1, "rgba(6,14,22,0.42)");
     sx.fillStyle = vig;
     sx.fillRect(0, 0, w, h);
     sx.restore();

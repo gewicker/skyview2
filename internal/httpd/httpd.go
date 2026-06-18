@@ -35,6 +35,8 @@ type Deps struct {
 	// Traffic returns the latest WSDOT flow snapshot (any-typed to keep httpd
 	// decoupled from the feed package). May be nil when traffic is unwired.
 	Traffic func() any
+	// Rail returns the latest OBA live light-rail snapshot. May be nil when unwired.
+	Rail func() any
 }
 
 // New builds the HTTP handler: WS, REST, and the embedded SPA.
@@ -77,6 +79,15 @@ func New(d Deps) http.Handler {
 			return
 		}
 		writeJSON(w, d.Traffic())
+	})
+
+	// Live Link light-rail positions (OBA). Empty when disabled.
+	mux.HandleFunc("/api/rail", func(w http.ResponseWriter, r *http.Request) {
+		if d.Rail == nil {
+			writeJSON(w, map[string]any{"trains": []any{}, "updated": 0})
+			return
+		}
+		writeJSON(w, d.Rail())
 	})
 
 	// Diagnostics: feed health + live counts + runtime stats (for the Pi and dev).

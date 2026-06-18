@@ -19,6 +19,7 @@ import { MarineLayer } from "./render/MarineLayer";
 import { RadarLayer } from "./render/RadarLayer";
 import { HighwayLayer } from "./render/HighwayLayer";
 import { RailLayer } from "./render/RailLayer";
+import { TrainLayer } from "./render/TrainLayer";
 import { VesselLayer } from "./render/VesselLayer";
 import { AIRPORTS } from "./render/airports";
 import { LeaderLayer } from "./render/LeaderLayer";
@@ -118,6 +119,7 @@ export default function Display() {
     r.use(new RailLayer());    // Link light rail line + stations (static GPS/OSM, above-ground)
     r.use(new HighwayLayer()); // synthetic road traffic (ambient) — above fog, off by default
     r.use(new VesselLayer());  // synthetic Sound vessel traffic (ambient) — off by default
+    r.use(new TrainLayer());   // simulated Link trains (timetable-driven; rides the rail toggle)
     r.use(new TrailLayer());
     r.use(new RouteLayer());   // dashed great-circle to destination for the selected aircraft
     r.use(new LeaderLayer());

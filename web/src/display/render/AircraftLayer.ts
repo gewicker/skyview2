@@ -272,12 +272,16 @@ export class AircraftLayer implements Layer {
     if (!f.cfg.showHome) return;
     const home = f.cam.project(f.cfg.centerLat, f.cfg.centerLon);
     const accent = "#ffc83c";
-    const pulse = 0.5 + 0.5 * Math.sin(f.t * 2.2);
+    // Slow asymmetric "lighthouse" breath — ease the BRIGHTNESS, not the radius (a raw sine on
+    // the radius read mechanical/blinky). ~8 s cycle, with a floor so the beacon never fully dims.
+    const ph = (f.t * 0.12) % 1;
+    const tri = ph < 0.6 ? ph / 0.6 : (1 - ph) / 0.4; // asymmetric rise (slow) / fall
+    const breath = tri * tri * (3 - 2 * tri);          // smooth the corners
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
-    ctx.fillStyle = "rgba(255,200,70,0.22)";
+    ctx.fillStyle = `rgba(255,200,70,${0.12 + 0.22 * breath})`;
     ctx.beginPath();
-    ctx.arc(home.x, home.y, 13 + 3 * pulse, 0, Math.PI * 2);
+    ctx.arc(home.x, home.y, 14, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalCompositeOperation = "source-over";
     ctx.strokeStyle = accent;
@@ -565,16 +569,29 @@ function drawLabel(ctx: CanvasRenderingContext2D, lines: string[], x: number, cy
   const n = lines.length;
   const top = cy - ((n - 1) * LINE_H) / 2;
   // Transparent (no plate/scrim, per preference): a dark outline carries contrast over bright
-  // imagery. No shadowBlur (too slow on the Pi).
+  // imagery. No shadowBlur (too slow on the Pi). Two-tier type — the callsign leads with a hair
+  // of tracking; secondary lines step DOWN in size + weight (hierarchy by size survives across a
+  // room where alpha-only hierarchy collapses).
+  const ls = ctx as unknown as { letterSpacing?: string };
+  const hasLS = "letterSpacing" in ctx;
+  ctx.save();
   ctx.lineJoin = "round";
   for (let i = 0; i < n; i++) {
     const y = top + i * LINE_H;
+    if (i === 0) {
+      ctx.font = "600 12px system-ui, sans-serif";
+      if (hasLS) ls.letterSpacing = "0.3px";
+    } else {
+      ctx.font = "500 11px system-ui, sans-serif";
+      if (hasLS) ls.letterSpacing = "0px";
+    }
     ctx.lineWidth = 3.5;
     ctx.strokeStyle = "rgba(0,0,0,0.72)";
     ctx.strokeText(lines[i], x, y);
-    ctx.fillStyle = i === 0 ? "rgba(242,246,251,0.99)" : "rgba(208,217,228,0.93)";
+    ctx.fillStyle = i === 0 ? "rgba(242,246,251,0.99)" : "rgba(206,216,227,0.9)";
     ctx.fillText(lines[i], x, y);
   }
+  ctx.restore();
 }
 
 // Callsign-only label for the mid tier: just the primary line, no plate, alpha-faded.

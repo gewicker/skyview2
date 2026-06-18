@@ -35,6 +35,7 @@ export class HighwayLayer implements Layer {
   private desat = 0;     // ambient "modelled not live" tell, set per frame
   private widthMul = 1;  // ribbon width grows mildly with zoom
   private carsVis = 0;   // 0 at metro zoom … 1 at street zoom (cars fade in)
+  private detail = 1;    // 0 zoomed out … 1 zoomed in — LOD: calms the wash when segments go sub-px
   // Flattened segment list (built once) + a parallel projected-points cache, reprojected only
   // when the camera view-key changes.
   private flat: { hw: Highway; si: number; seg: [number, number][] }[] = [];
@@ -74,6 +75,7 @@ export class HighwayLayer implements Layer {
     const mz = f.view.mapZoom || 1;
     this.widthMul = Math.max(0.85, Math.min(2.2, 0.85 + 0.18 * (mz - 1)));
     this.carsVis = smooth01(CARS_ZOOM_MIN, CARS_ZOOM_FULL, mz);
+    this.detail = smooth01(2.8, 4.2, mz); // below ~street zoom, simplify the wash (no speckle/scroll)
     this.ensureProjected(f);
     const ctx = f.ctx, w = f.w, h = f.h;
     const im = 0.6 + 0.6 * intensity;
@@ -106,8 +108,13 @@ export class HighwayLayer implements Layer {
   // coverage×freshness); elsewhere / when the feed is stale it falls back to the time-of-day
   // model. A small stable along-road sine keeps the flow from being a flat wash either way.
   private segCong(hw: Highway, segIdx: number): number {
-    const v = Math.sin(segIdx * 1.7 + hw.id.length) * 0.5 + 0.5; // 0..1 stable per segment
-    const model = Math.max(0, Math.min(1, congestionNow(hw.base) * (0.82 + 0.36 * v)));
+    // Low-frequency along-road wave: at 1.7 rad/seg adjacent segments alternated hard, which
+    // speckled into noise once zoomed out (segments < a few px). 0.4 rad/seg makes a smooth
+    // band, and the amplitude eases toward flat as you zoom out so a corridor reads as one
+    // calm ribbon instead of a jittery dotted line.
+    const amp = 0.34 * (0.28 + 0.72 * this.detail);
+    const v = Math.sin(segIdx * 0.4 + hw.id.length) * 0.5 + 0.5; // 0..1 smooth per segment
+    const model = Math.max(0, Math.min(1, congestionNow(hw.base) * (1 - amp / 2 + amp * v)));
     const live = liveCong(hw.id, segIdx);
     if (live.w <= 0) return model;
     const liveTex = Math.max(0, Math.min(1, live.val * (0.92 + 0.16 * v)));
@@ -140,7 +147,9 @@ export class HighwayLayer implements Layer {
     // segments stay solid (dashes on clear road = noise).
     ctx.lineWidth = width;
     ctx.strokeStyle = col(c, aCore);
-    if (cong > 0.5) {
+    if (cong > 0.5 && this.detail > 0.15) {
+      // Scrolling dashes are street-zoom detail: at metro zoom the dash period is sub-pixel and
+      // just shimmers, so we keep the ribbon solid until zoomed in (this.detail gates them).
       const dash: [number, number] = cong > 0.8 ? [3, 5] : [4, 12];
       ctx.setLineDash(dash);
       ctx.lineDashOffset = -((f.t * (10 - 8 * cong)) % (dash[0] + dash[1])); // calmer drift (was 26-22): the fast scroll read as distracting

@@ -71,6 +71,11 @@ func main() {
 	// server-side regardless (the client only ever sees /api/traffic). Empty = disabled.
 	traffic := feed.NewTraffic(env("WSDOT_ACCESS_CODE", "eab60899-d4ba-469c-9221-354c53b781bc"), filepath.Join(*dataDir, "traffic-cache.json"))
 
+	// Live Link light-rail positions (Sound Transit OneBusAway). Per-app key, held
+	// server-side (the client only ever sees /api/rail); env can override. Empty = disabled,
+	// and the client falls back to the timetable simulation.
+	rail := feed.NewRail(env("OBA_API_KEY", "884a2484-8efe-448e-99b2-05c5ed0ee360"), filepath.Join(*dataDir, "rail-cache.json"))
+
 	var lastMu sync.Mutex
 	var lastNow float64
 	var lastList []aircraft.Aircraft
@@ -93,6 +98,7 @@ func main() {
 		Handler: httpd.New(httpd.Deps{
 			Hub: h, Cfg: cfg, Scenes: scenes, Notable: notable, Snapshot: snapshot, Status: status,
 			Traffic: func() any { return traffic.Latest() },
+			Rail:    func() any { return rail.Latest() },
 		}),
 		// Hardening. No blanket WriteTimeout — it would kill the long-lived /ws connection;
 		// per-write deadlines live in the hub instead.
@@ -109,7 +115,8 @@ func main() {
 	}
 	go enr.Run(ctx)
 	go traffic.Run(ctx)
-	log.Printf("feed: radio %s every %s (api supplement: %v, wsdot traffic: %v)", opts.RadioURL, opts.PollInterval, opts.SupplementAPI, traffic.Enabled())
+	go rail.Run(ctx)
+	log.Printf("feed: radio %s every %s (api supplement: %v, wsdot traffic: %v, oba rail: %v)", opts.RadioURL, opts.PollInterval, opts.SupplementAPI, traffic.Enabled(), rail.Enabled())
 
 	go func() {
 		t := time.NewTicker(opts.PollInterval)
