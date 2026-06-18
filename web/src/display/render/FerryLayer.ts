@@ -5,7 +5,7 @@
 import type { Layer, FrameContext } from "./types";
 import { startLiveFerries, tickLiveFerries, liveFerries } from "./liveferries";
 
-const HULL = "120,170,205"; // cool steel blue
+const HULL = "140,195,235"; // brighter steel-cyan so it stands off the teal water
 
 export class FerryLayer implements Layer {
   readonly name = "ferries";
@@ -38,18 +38,18 @@ export class FerryLayer implements Layer {
       }
       // soft halo
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${HULL},${0.16 * a})`;
+      ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${HULL},${0.2 * a})`;
       ctx.fill();
-      // hull marker (slightly larger than a bus — ferries are big)
+      // hull marker (bigger + brighter so it reads off the teal water)
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 3.4, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${HULL},${0.92 * a})`;
+      ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${HULL},${0.95 * a})`;
       ctx.fill();
-      // bright core
+      // bright near-white core — the visible "there's a boat here" point
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 1.7, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(235,244,250,${0.96 * a})`;
+      ctx.arc(p.x, p.y, 2.6, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(238,246,252,${0.98 * a})`;
       ctx.fill();
     }
     ctx.restore();

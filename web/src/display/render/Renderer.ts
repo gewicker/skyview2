@@ -166,7 +166,7 @@ export class Renderer {
     const cam = this.lastCam;
     const cfg = this.getConfig();
     let best: TransitPick | null = null;
-    let bestD = 22 * 22; // tap radius (px²)
+    let bestD = 28 * 28; // tap radius (px²) — forgiving for small transit markers
     const consider = (lat: number, lon: number, make: () => TransitPick) => {
       const p = cam.project(lat, lon);
       const d = (p.x - px) ** 2 + (p.y - py) ** 2;
