@@ -5,7 +5,8 @@
 import type { Layer, FrameContext } from "./types";
 import { startLiveFerries, tickLiveFerries, liveFerries, ferryTerminals } from "./liveferries";
 
-const HULL = "140,195,235"; // brighter steel-cyan so it stands off the teal water
+const HULL = "150,205,242";     // steel-cyan, nudged cooler+lighter off the teal water
+const HULL_EDGE = "8,14,22";    // dark keyline so the boat separates from water by an edge, not hue alone
 
 export class FerryLayer implements Layer {
   readonly name = "ferries";
@@ -98,6 +99,9 @@ export class FerryLayer implements Layer {
       ctx.closePath();
       ctx.fillStyle = `rgba(${HULL},${0.98 * a})`;
       ctx.fill();
+      ctx.strokeStyle = `rgba(${HULL_EDGE},${0.55 * a})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
 
       // bright deckhouse core — the "there's a boat here" point
       ctx.beginPath();

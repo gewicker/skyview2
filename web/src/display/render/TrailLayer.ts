@@ -10,8 +10,8 @@ import { altRamp, lerp, hexRGB, type RGB } from "./colors";
 
 const MAX_TRAILS = 40;
 
-const TRAIL_CLIMB: RGB = [60, 230, 150];
-const TRAIL_DESCEND: RGB = [255, 95, 60];
+const TRAIL_CLIMB: RGB = [90, 235, 165];  // brighter (up reads lighter) — trend survives deuteranopia via lightness, not hue alone
+const TRAIL_DESCEND: RGB = [220, 80, 55]; // deeper/darker (down reads heavier)
 const TRAIL_LEVEL: RGB = [130, 150, 185];
 
 export class TrailLayer implements Layer {

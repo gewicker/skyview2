@@ -73,7 +73,7 @@ function mixSrgb(a: RGB, b: RGB, t: number): RGB {
 const CONG_STOPS: [number, RGB][] = [
   [0.0, [110, 128, 145]],   // clear — lifted cool (reads as a quiet line, not "no data")
   [0.35, [132, 160, 180]],  // light — pale steel
-  [0.6, [230, 170, 70]],    // slow — amber (cool→warm crossover: the first alarm)
+  [0.6, [235, 150, 60]],    // slow — orange-amber (pulled off the home-beacon gold / 5k-ft aircraft amber so road traffic reads distinctly)
   [0.8, [236, 118, 70]],    // heavy — orange
   [1.0, [236, 70, 120]],    // jam — hot red-MAGENTA (a hue the map never uses; separates from emergency/trail red)
 ];
