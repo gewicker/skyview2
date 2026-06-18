@@ -4,8 +4,17 @@
 import { Camera, llToWorld, worldToLL } from "./mercator";
 import { TrackStore } from "./TrackStore";
 import { pickStatic } from "./navdata";
+import { liveTrains } from "./livetrains";
+import { liveBuses } from "./livebuses";
+import { RAIL_STATIONS } from "./rail";
 import type { Layer, Visible } from "./types";
 import type { Aircraft, Config } from "@shared/types";
+
+// A tapped transit element (train / bus / station) — drives the transit detail card.
+export type TransitPick =
+  | { kind: "station"; title: string }
+  | { kind: "train"; line: string; devSec: number }
+  | { kind: "bus" };
 
 const MILE_M = 1609.34;
 
@@ -146,6 +155,29 @@ export class Renderer {
     const cam = this.lastCam;
     const cfg = this.getConfig();
     return pickStatic((lat, lon) => cam.project(lat, lon), px, py, !!cfg.showNavaids, !!cfg.showProcedures);
+  }
+
+  /** Nearest tappable transit element (live train, live bus, or rail station) to a screen point,
+   *  honoring the rail/bus toggles. Returns a snapshot for the detail card, or null. */
+  pickTransit(px: number, py: number): TransitPick | null {
+    if (!this.lastCam) return null;
+    const cam = this.lastCam;
+    const cfg = this.getConfig();
+    let best: TransitPick | null = null;
+    let bestD = 22 * 22; // tap radius (px²)
+    const consider = (lat: number, lon: number, make: () => TransitPick) => {
+      const p = cam.project(lat, lon);
+      const d = (p.x - px) ** 2 + (p.y - py) ** 2;
+      if (d < bestD) { bestD = d; best = make(); }
+    };
+    if (cfg.showRail) {
+      for (const t of liveTrains()) consider(t.lat, t.lon, () => ({ kind: "train", line: t.line, devSec: t.devSec }));
+      for (const s of RAIL_STATIONS) consider(s.lat, s.lon, () => ({ kind: "station", title: s.name }));
+    }
+    if (cfg.showBuses) {
+      for (const b of liveBuses()) consider(b.lat, b.lon, () => ({ kind: "bus" }));
+    }
+    return best;
   }
 
   /** Is this aircraft still tracked AND within (a margin of) the viewport? Used to

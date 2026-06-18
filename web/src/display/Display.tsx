@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as RPointerEvent, WheelEvent as RWheelEvent } from "react";
 import { useStream } from "../lib/useStream";
-import { Renderer } from "./render/Renderer";
+import { Renderer, type TransitPick } from "./render/Renderer";
 import { MapLayer } from "./render/MapLayer";
 import { AirportsLayer } from "./render/AirportsLayer";
 import { AirportDiagramLayer } from "./render/AirportDiagramLayer";
@@ -44,6 +44,7 @@ export default function Display() {
 
   const [selected, setSelected] = useState<string | null>(null);
   const [, setSelectedNav] = useState<string | null>(null); // tapped navaid/fix/final
+  const [transit, setTransit] = useState<TransitPick | null>(null); // tapped train/bus/station
   const [showSettings, setShowSettings] = useState(false);
   const [orbit, setOrbit] = useState({ x: 0, y: 0 }); // burn-in step offset (kiosk)
 
@@ -251,11 +252,21 @@ export default function Display() {
         if (hex) {
           r.select(hex); setSelected(hex);
           r.selectNav(null); setSelectedNav(null);
+          setTransit(null);
         } else {
-          const nid = r.pickStatic(p.x, p.y);
-          r.selectNav(nid); setSelectedNav(nid);
-          r.select(null); setSelected(null);
-          r.dismissSpotlight(); // tapping off a plane also drops the overhead card
+          const tp = r.pickTransit(p.x, p.y); // a train/bus/station, before navaids
+          if (tp) {
+            setTransit(tp);
+            r.select(null); setSelected(null);
+            r.selectNav(null); setSelectedNav(null);
+            r.dismissSpotlight();
+          } else {
+            const nid = r.pickStatic(p.x, p.y);
+            r.selectNav(nid); setSelectedNav(nid);
+            r.select(null); setSelected(null);
+            setTransit(null);
+            r.dismissSpotlight(); // tapping off a plane also drops the overhead card
+          }
         }
       } else if (size >= 1) {
         commit();
@@ -318,6 +329,7 @@ export default function Display() {
         <TapCard a={sel} cfg={state.config}
           onClose={() => { rendererRef.current?.select(null); rendererRef.current?.dismissSpotlight(); setSelected(null); }} />
       )}
+      {transit && <TransitCard pick={transit} onClose={() => setTransit(null)} />}
 
       {/* On-screen quick controls — auto-hide after inactivity. */}
       <div style={{ position: "absolute", right: 16, bottom: 16, display: "flex", flexDirection: "column", gap: 10, ...autoHide(uiVisible) }}>
@@ -562,17 +574,13 @@ type RouteEnd = { code?: string; city?: string; lat?: number | null; lon?: numbe
 function routeEnds(a: Aircraft): { from: RouteEnd; to: RouteEnd } | null {
   const arr = localArrival(a); // physical destination if it's on final to a local field
   if (!a.origin && !a.destination && !arr) return null;
-  const O: RouteEnd = { code: a.origin, city: a.originName, lat: a.originLat, lon: a.originLon };
-  const D: RouteEnd = { code: a.destination, city: a.destName, lat: a.destLat, lon: a.destLon };
-  let from = O, to = D;
-  if (a.track != null && a.lat != null && a.lon != null &&
-      a.originLat != null && a.originLon != null && a.destLat != null && a.destLon != null) {
-    const aO = angDiff(a.track, bearing(a.lat, a.lon, a.originLat, a.originLon));
-    const aD = angDiff(a.track, bearing(a.lat, a.lon, a.destLat, a.destLon));
-    if (aO < aD - 25) { from = D; to = O; }
-  }
-  // Physical reality beats the route DB: if it's on final to a local field, THAT is the
-  // destination (the route DB frequently shows the wrong leg/route for an arrival).
+  // The SERVER is the single authority for route direction (enrich.verifyRoute already swaps
+  // reversed legs and flags uncertainty). The card renders a.origin → a.destination verbatim so it
+  // always agrees with the on-map tag — no client re-swap (that second, looser swap caused the tag
+  // and card to disagree and over-corrected). The one client override below: a physics-verified
+  // local arrival (the same arrivalField authority the tag uses).
+  const from: RouteEnd = { code: a.origin, city: a.originName, lat: a.originLat, lon: a.originLon };
+  let to: RouteEnd = { code: a.destination, city: a.destName, lat: a.destLat, lon: a.destLon };
   if (arr) to = { code: arr.code, city: arr.name, lat: arr.lat, lon: arr.lon };
   return { from, to };
 }
@@ -588,6 +596,37 @@ function routeProvenance(a: Aircraft): { mark: string; word: string; note: strin
   return { mark: "", word: "scheduled", note: "route database" };
 }
 
+// Compact detail card for a tapped transit element (train / bus / station). Live train shows its
+// schedule deviation as plain-English on-time/late/early.
+function TransitCard({ pick, onClose }: { pick: TransitPick; onClose: () => void }) {
+  const lineColor = pick.kind === "train" ? (pick.line === "1" ? "#28a05a" : "#3aa0d8")
+    : pick.kind === "bus" ? "#9a8cf0" : "#28e1aa";
+  let title = "", sub = "", detail = "";
+  if (pick.kind === "station") { title = pick.title; sub = "Link light rail station"; }
+  else if (pick.kind === "train") { title = pick.line + " Line"; sub = "Link train · live"; detail = delayText(pick.devSec); }
+  else { title = "Bus"; sub = "Metro / Sound Transit · live"; }
+  return (
+    <div style={{ position: "absolute", top: 16, right: 16, minWidth: 184,
+      background: "rgba(8,12,20,0.92)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12,
+      padding: "12px 14px", color: "#dfe7f2" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          <span style={{ width: 10, height: 10, borderRadius: "50%", background: lineColor, flex: "none" }} />
+          <span style={{ font: "700 16px system-ui", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</span>
+        </div>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: "#8c98a8", font: "600 14px system-ui", cursor: "pointer", flex: "none" }}>✕</button>
+      </div>
+      <div style={{ font: "500 11px system-ui", color: "#9fb0c2", marginTop: 4 }}>{sub}</div>
+      {detail && <div style={{ font: "600 13px system-ui", marginTop: 8 }}>{detail}</div>}
+    </div>
+  );
+}
+function delayText(devSec: number): string {
+  if (Math.abs(devSec) < 60) return "On time";
+  const m = Math.round(Math.abs(devSec) / 60);
+  return devSec > 0 ? m + " min late" : m + " min early";
+}
+
 // The local field an aircraft is physically landing at — the SAME approach-physics authority
 // the on-screen "→ SEA" tag uses (glidepath + alignment), not nearest-centroid. This keeps the
 // card's destination consistent with the tag (a SEA arrival no longer reads "→ BFI"). null if
@@ -601,10 +640,6 @@ function localArrival(a: Aircraft): { code: string; name: string; lat: number; l
   for (const rw of ap.runways) { la += rw.le[0] + rw.he[0]; lo += rw.le[1] + rw.he[1]; n += 2; }
   return { code: ap.iata, name: ap.name, lat: la / n, lon: lo / n };
 }
-function angDiff(x: number, y: number): number {
-  return Math.abs(((x - y + 540) % 360) - 180);
-}
-
 function haversine(la1: number, lo1: number, la2?: number, lo2?: number): number | null {
   if (la2 == null || lo2 == null) return null;
   const R = 3958.8, DEG = Math.PI / 180;

@@ -197,26 +197,36 @@ func verifyRoute(ac *aircraft.Aircraft) {
 		return // too slow for track to be a reliable direction
 	}
 	lat, lon, trk := *ac.Lat, *ac.Lon, *ac.Track
+	distDest := distNM(lat, lon, *ac.DestLat, *ac.DestLon)
+	distOrig := distNM(lat, lon, *ac.OriginLat, *ac.OriginLon)
+	// Don't judge in the terminal area (just departed / arriving) or during an active climb-out:
+	// the track legitimately doesn't point at the destination there, which produced FALSE swaps on
+	// departures and SID/vector maneuvering. Only judge a settled, enroute aircraft.
+	if distDest < 30 || distOrig < 30 {
+		return
+	}
+	if ac.BaroRate != nil && *ac.BaroRate > 200 && ac.AltBaro != nil && *ac.AltBaro < 18000 {
+		return
+	}
 	bDest := bearing(lat, lon, *ac.DestLat, *ac.DestLon)
 	bOrig := bearing(lat, lon, *ac.OriginLat, *ac.OriginLon)
 	dDest := angDiff(trk, bDest)
 	dOrig := angDiff(trk, bOrig)
-	distDest := distNM(lat, lon, *ac.DestLat, *ac.DestLon)
 
-	// Reversed leg: heading clearly favors the origin, points away from the dest, and we're not
-	// already on top of the dest. Swap so the label shows where it's actually going.
-	if dOrig < dDest-40 && dDest > 90 && distDest > 40 {
+	// Reversed leg: a STRONG ABSOLUTE signal — heading squarely at the origin AND squarely away
+	// from the dest (not a loose relative margin, which over-corrected). Swap so it shows where
+	// it's actually going.
+	if dOrig < 35 && dDest > 110 {
 		ac.Origin, ac.Destination = ac.Destination, ac.Origin
 		ac.OriginName, ac.DestName = ac.DestName, ac.OriginName
 		ac.OriginLat, ac.DestLat = ac.DestLat, ac.OriginLat
 		ac.OriginLon, ac.DestLon = ac.DestLon, ac.OriginLon
-		bDest = bearing(lat, lon, *ac.DestLat, *ac.DestLon)
-		dDest = angDiff(trk, bDest)
+		dDest = angDiff(trk, bearing(lat, lon, *ac.DestLat, *ac.DestLon))
 		distDest = distNM(lat, lon, *ac.DestLat, *ac.DestLon)
 	}
-	// Untrustworthy: heading isn't toward the dest and we're far enough out that it isn't just a
-	// terminal-area vector. Flag it; the client shows the guess but marks it unverified.
-	ac.RouteUncertain = dDest > 70 && distDest > 60
+	// Untrustworthy: heading still isn't toward the dest while well enroute. Flag it; the client
+	// shows the guess but marks it unverified.
+	ac.RouteUncertain = dDest > 80 && distDest > 60
 }
 
 // bearing returns the initial great-circle bearing from (la1,lo1) to (la2,lo2) in degrees 0..360.
