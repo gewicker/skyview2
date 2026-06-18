@@ -22,7 +22,7 @@ const ALT_STOPS: [number, RGB][] = [
   [44000, [224, 236, 248]], // very high — near-white ice (reads as "bright", not "cyan")
 ];
 
-export function altRamp(alt: number): RGB {
+function altRampCompute(alt: number): RGB {
   const a = alt < 0 ? 0 : alt > 44000 ? 44000 : alt; // clamp to the ramp domain
   if (a <= ALT_STOPS[0][0]) return ALT_STOPS[0][1];
   for (let i = 1; i < ALT_STOPS.length; i++) {
@@ -33,6 +33,14 @@ export function altRamp(alt: number): RGB {
     }
   }
   return ALT_STOPS[ALT_STOPS.length - 1][1];
+}
+// 257-entry LUT so the per-trail-segment / per-glyph altitude colour is a table lookup, not a
+// gamma-correct pow-mix every call. The bucketing matches the glyph sprite cache's quantization
+// (visually identical). Returned arrays are shared + READ-ONLY — callers must not mutate them.
+const ALT_LUT: RGB[] = Array.from({ length: 257 }, (_, i) => altRampCompute((i / 256) * 44000));
+export function altRamp(alt: number): RGB {
+  const a = alt < 0 ? 0 : alt > 44000 ? 44000 : alt;
+  return ALT_LUT[((a / 44000) * 256) | 0];
 }
 
 // Plain (linear, per-channel) lerp — used by the trail climb/descent colouring.
@@ -70,7 +78,7 @@ const CONG_STOPS: [number, RGB][] = [
   [1.0, [236, 70, 120]],    // jam — hot red-MAGENTA (a hue the map never uses; separates from emergency/trail red)
 ];
 
-export function congRamp(t: number): RGB {
+function congRampCompute(t: number): RGB {
   const x = t < 0 ? 0 : t > 1 ? 1 : t;
   if (x <= CONG_STOPS[0][0]) return CONG_STOPS[0][1];
   for (let i = 1; i < CONG_STOPS.length; i++) {
@@ -82,6 +90,13 @@ export function congRamp(t: number): RGB {
   }
   return CONG_STOPS[CONG_STOPS.length - 1][1];
 }
+// 129-entry LUT — the congestion colour is looked up per on-screen road segment per frame.
+// Shared + READ-ONLY arrays (callers must not mutate); desatRGB already returns a fresh array.
+const CONG_LUT: RGB[] = Array.from({ length: 129 }, (_, i) => congRampCompute(i / 128));
+export function congRamp(t: number): RGB {
+  const x = t < 0 ? 0 : t > 1 ? 1 : t;
+  return CONG_LUT[(x * 128) | 0];
+}
 
 // Pull a colour toward its own grey by `amt` (0 = unchanged, 1 = fully desaturated).
 // Used as the ambient "this is modelled, not live" tell on the traffic layer when the
@@ -92,7 +107,12 @@ export function desatRGB(c: RGB, amt: number): RGB {
   return [c[0] + (grey - c[0]) * a, c[1] + (grey - c[1]) * a, c[2] + (grey - c[2]) * a];
 }
 
+const _hexMemo = new Map<string, RGB>(); // palette hex rarely changes — parse once per string (was a regex/frame)
 export function hexRGB(hex: string): RGB {
+  let v = _hexMemo.get(hex);
+  if (v) return v;
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
-  return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [255, 154, 60];
+  v = m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [255, 154, 60];
+  _hexMemo.set(hex, v);
+  return v;
 }

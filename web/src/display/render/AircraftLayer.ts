@@ -690,8 +690,13 @@ function drawNavLights(ctx: CanvasRenderingContext2D, glyphS: number, a: LightAn
   ctx.globalCompositeOperation = "source-over";
 }
 
+const _seedMemo = new Map<string, number>(); // per-hex twinkle seed — stable, computed once (was hashed several times/plane/frame)
 function seedFor(hex: string): number {
+  let v = _seedMemo.get(hex);
+  if (v !== undefined) return v;
   let s = 0;
   for (let i = 0; i < hex.length; i++) s = (s + hex.charCodeAt(i)) % 628;
-  return s / 100;
+  v = s / 100;
+  _seedMemo.set(hex, v);
+  return v;
 }

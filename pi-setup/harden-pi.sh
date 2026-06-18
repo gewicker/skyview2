@@ -48,6 +48,20 @@ RuntimeMaxUse=64M
 EOF
 sudo systemctl restart systemd-journald || true
 
+echo "==> Wi-Fi power-save OFF (a napping radio silently drops the kiosk off the network)"
+# The kiosk renders off localhost, so a dropped Wi-Fi link looks "working" but is unreachable
+# (skyview.local stops resolving). NetworkManager defaults Wi-Fi power-save ON; force it off for
+# all connections (survives reboots + re-connects), and apply to the live radio now.
+sudo mkdir -p /etc/NetworkManager/conf.d
+sudo tee /etc/NetworkManager/conf.d/10-skyview-wifi-powersave.conf >/dev/null <<'EOF'
+[connection]
+wifi.powersave = 2
+EOF
+for w in $(nmcli -t -f DEVICE,TYPE device 2>/dev/null | awk -F: '$2=="wifi"{print $1}'); do
+  sudo iw dev "$w" set power_save off 2>/dev/null || true
+done
+sudo nmcli general reload 2>/dev/null || true   # re-read conf.d WITHOUT dropping our SSH link (no restart)
+
 echo "==> Self-heal script + 2-minute timer"
 sudo tee /usr/local/bin/skyview-selfheal >/dev/null <<'EOF'
 #!/usr/bin/env bash
@@ -66,7 +80,11 @@ if [ -n "$GW" ] && ping -c1 -W2 "$GW" >/dev/null 2>&1; then
   rm -f "$STATE/offline_since"
 else
   nmcli radio wifi on 2>/dev/null || true
-  nmcli -t -f NAME con show 2>/dev/null | grep -qx SkyView && nmcli con up SkyView 2>/dev/null || true
+  # Reconnect whatever profile is bound to the Wi-Fi device (name-agnostic — the stock profile is
+  # "preconfigured", not "SkyView", so the old hard-coded name never reconnected).
+  for w in $(nmcli -t -f DEVICE,TYPE device 2>/dev/null | awk -F: '$2=="wifi"{print $1}'); do
+    nmcli device reconnect "$w" 2>/dev/null || true
+  done
   [ -f "$STATE/offline_since" ] || echo "$now" > "$STATE/offline_since"
   since=$(cat "$STATE/offline_since" 2>/dev/null || echo "$now")
   if [ $(( now - since )) -ge 1200 ]; then            # offline for 20 minutes

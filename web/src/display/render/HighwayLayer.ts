@@ -143,7 +143,7 @@ export class HighwayLayer implements Layer {
     if (cong > 0.5) {
       const dash: [number, number] = cong > 0.8 ? [3, 5] : [4, 12];
       ctx.setLineDash(dash);
-      ctx.lineDashOffset = -((f.t * (26 - 22 * cong)) % (dash[0] + dash[1]));
+      ctx.lineDashOffset = -((f.t * (10 - 8 * cong)) % (dash[0] + dash[1])); // calmer drift (was 26-22): the fast scroll read as distracting
     } else {
       ctx.setLineDash([]);
     }
