@@ -6,9 +6,10 @@
 import type { Layer, FrameContext } from "./types";
 import { RAIL_SEGMENTS, RAIL_STATIONS } from "./rail";
 
-const LINE = "rgba(122,201,143,";          // muted Link green (alpha appended)
-const STATION = "rgba(150,225,170,0.95)";  // station ring
-const STATION_CORE = "rgba(240,255,245,0.95)";
+const LINE = "rgba(46,196,142,";              // electric Link emerald (alpha appended) — distinct from
+                                             // terrain green AND the ~15k-ft altitude meadow-green
+const STATION_RING = "rgba(46,196,142,0.9)"; // emerald outline
+const STATION_CORE = "rgba(225,255,238,0.95)"; // bright near-white core so stations read as landmarks
 
 interface Pt { x: number; y: number }
 
@@ -35,6 +36,8 @@ export class RailLayer implements Layer {
     if (!RAIL_SEGMENTS.length && !RAIL_STATIONS.length) return; // generator not run yet
     this.ensureProjected(f);
     const ctx = f.ctx, w = f.w, h = f.h;
+    // Mild width growth with zoom (constant, NOT congestion-driven — rail is fixed infrastructure).
+    const wm = Math.max(1, Math.min(1.7, 1 + 0.16 * ((f.view.mapZoom || 1) - 1)));
     ctx.save();
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
@@ -42,11 +45,11 @@ export class RailLayer implements Layer {
     for (let i = 0; i < this.proj.length; i++) {
       const pts = this.proj[i];
       if (pts.length < 2 || !onScreen(pts, w, h)) continue;
-      ctx.strokeStyle = LINE + "0.18)";
-      ctx.lineWidth = 4;
+      ctx.strokeStyle = LINE + "0.16)";
+      ctx.lineWidth = 4 * wm;
       stroke(ctx, pts);
-      ctx.strokeStyle = LINE + "0.85)";
-      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = LINE + "0.82)";
+      ctx.lineWidth = 1.6 * wm;
       stroke(ctx, pts);
     }
     // Stations: a small ring + light core — the landmarks. Label-free until tapped (ambient rule).
@@ -54,11 +57,11 @@ export class RailLayer implements Layer {
       const p = f.cam.project(s.lat, s.lon);
       if (p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) continue;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 3.6, 0, Math.PI * 2);
-      ctx.fillStyle = STATION;
+      ctx.arc(p.x, p.y, 3.8, 0, Math.PI * 2);
+      ctx.fillStyle = STATION_RING;
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 1.6, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, 1.9, 0, Math.PI * 2);
       ctx.fillStyle = STATION_CORE;
       ctx.fill();
     }
