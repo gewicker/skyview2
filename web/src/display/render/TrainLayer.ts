@@ -54,25 +54,25 @@ export class TrainLayer implements Layer {
       grad.addColorStop(0, `rgba(${base},0)`);
       grad.addColorStop(1, `rgba(${base},${0.55 * a})`);
       ctx.strokeStyle = grad;
-      ctx.lineWidth = 2.4;
+      ctx.lineWidth = 2.8;
       ctx.beginPath();
       ctx.moveTo(ap.x, ap.y);
       ctx.lineTo(p.x, p.y);
       ctx.stroke();
       // soft glow
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${base},${0.16 * a})`;
+      ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${base},${0.22 * a})`;
       ctx.fill();
       // solid bead
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${base},${0.92 * a})`;
+      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${base},${0.95 * a})`;
       ctx.fill();
       // bright measured core
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 1.4, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(232,246,255,${0.95 * a})`;
+      ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(232,246,255,${0.98 * a})`;
       ctx.fill();
     }
 
@@ -96,7 +96,7 @@ export class TrainLayer implements Layer {
       ctx.stroke();
       // hollow ring (no filled core) marks "scheduled, not live"
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 2.7, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
       ctx.strokeStyle = `rgba(${base},0.75)`;
       ctx.lineWidth = 1.4;
       ctx.stroke();

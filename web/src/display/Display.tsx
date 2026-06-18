@@ -20,6 +20,7 @@ import { RadarLayer } from "./render/RadarLayer";
 import { HighwayLayer } from "./render/HighwayLayer";
 import { RailLayer } from "./render/RailLayer";
 import { TrainLayer } from "./render/TrainLayer";
+import { BusLayer } from "./render/BusLayer";
 import { VesselLayer } from "./render/VesselLayer";
 import { AIRPORTS } from "./render/airports";
 import { LeaderLayer } from "./render/LeaderLayer";
@@ -116,10 +117,13 @@ export default function Display() {
     r.use(new NavaidLayer());    // VOR roses / fixes (under traffic), off by default
     r.use(new StaticOverlayLayer([new PlaceLabelsLayer()], (f) => f.cfg.mapStyle));
     r.use(new MarineLayer());  // coastal fog (weather) — under the traffic, off by default
-    r.use(new RailLayer());    // Link light rail line + stations (static GPS/OSM, above-ground)
     r.use(new HighwayLayer()); // synthetic road traffic (ambient) — above fog, off by default
     r.use(new VesselLayer());  // synthetic Sound vessel traffic (ambient) — off by default
-    r.use(new TrainLayer());   // simulated Link trains (timetable-driven; rides the rail toggle)
+    r.use(new RailLayer());    // Link light rail line + stations — ABOVE the synthetic car/vessel wash
+                               // (real infrastructure shouldn't be buried by the congestion ribbon),
+                               // still below trains/aircraft (brightness law)
+    r.use(new BusLayer());     // live Metro + ST buses (OBA) — real transit, above the car wash, below trains
+    r.use(new TrainLayer());   // Link trains (live OBA beads + timetable fallback; rides the rail toggle)
     r.use(new TrailLayer());
     r.use(new RouteLayer());   // dashed great-circle to destination for the selected aircraft
     r.use(new LeaderLayer());

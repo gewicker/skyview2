@@ -47,6 +47,7 @@ export interface Config {
   showHighways: boolean; highwayIntensity: number; // synthetic road traffic
   showVessels: boolean; vesselIntensity: number; // synthetic Sound vessel traffic
   showRail: boolean; // Link light rail line + stations (static, GPS/OSM)
+  showBuses: boolean; // live Metro + Sound Transit buses (OBA) within the home radius
 
   monitorMode: MonitorMode; lightsOutHour: number; lightsOutBrightness: number; muteUntil: number; showCursor: boolean;
 }

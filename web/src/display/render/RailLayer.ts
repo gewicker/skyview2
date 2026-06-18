@@ -6,10 +6,12 @@
 import type { Layer, FrameContext } from "./types";
 import { RAIL_SEGMENTS, RAIL_STATIONS } from "./rail";
 
-const LINE = "rgba(46,196,142,";              // electric Link emerald (alpha appended) — distinct from
-                                             // terrain green AND the ~15k-ft altitude meadow-green
-const STATION_RING = "rgba(46,196,142,0.9)"; // emerald outline
-const STATION_CORE = "rgba(225,255,238,0.95)"; // bright near-white core so stations read as landmarks
+const LINE = "rgba(40,225,170,";             // bright transit JADE (alpha appended) — more saturated and
+                                             // brighter than the cool satellite grade, and clear of the
+                                             // ~15k-ft altitude meadow-green trails, so it reads from a room away
+const LINE_HAIR = "rgba(150,240,200,0.9)";   // bright coaxial centerline — reads as lit infrastructure
+const STATION_RING = "rgba(40,225,170,0.95)"; // jade outline
+const STATION_CORE = "rgba(232,255,244,0.98)"; // bright near-white core so stations read as landmarks
 
 interface Pt { x: number; y: number }
 
@@ -37,7 +39,7 @@ export class RailLayer implements Layer {
     this.ensureProjected(f);
     const ctx = f.ctx, w = f.w, h = f.h;
     // Mild width growth with zoom (constant, NOT congestion-driven — rail is fixed infrastructure).
-    const wm = Math.max(1, Math.min(1.7, 1 + 0.16 * ((f.view.mapZoom || 1) - 1)));
+    const wm = Math.max(1, Math.min(2.2, 1 + 0.22 * ((f.view.mapZoom || 1) - 1)));
     ctx.save();
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
@@ -45,23 +47,32 @@ export class RailLayer implements Layer {
     for (let i = 0; i < this.proj.length; i++) {
       const pts = this.proj[i];
       if (pts.length < 2 || !onScreen(pts, w, h)) continue;
-      ctx.strokeStyle = LINE + "0.16)";
-      ctx.lineWidth = 4 * wm;
+      ctx.strokeStyle = LINE + "0.22)";   // wide soft glow — bloom without shadowBlur
+      ctx.lineWidth = 9 * wm;
       stroke(ctx, pts);
-      ctx.strokeStyle = LINE + "0.82)";
-      ctx.lineWidth = 1.6 * wm;
+      ctx.strokeStyle = LINE + "0.95)";   // mid body
+      ctx.lineWidth = 2.6 * wm;
+      stroke(ctx, pts);
+      ctx.strokeStyle = LINE_HAIR;        // bright centerline inside the body
+      ctx.lineWidth = 1 * wm;
       stroke(ctx, pts);
     }
     // Stations: a small ring + light core — the landmarks. Label-free until tapped (ambient rule).
+    const sr = wm; // stations grow a touch with zoom too
     for (const s of RAIL_STATIONS) {
       const p = f.cam.project(s.lat, s.lon);
       if (p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) continue;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 3.8, 0, Math.PI * 2);
-      ctx.fillStyle = STATION_RING;
+      ctx.beginPath();                                 // faint halo bloom
+      ctx.arc(p.x, p.y, 7 * sr, 0, Math.PI * 2);
+      ctx.fillStyle = LINE + "0.18)";
       ctx.fill();
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 1.9, 0, Math.PI * 2);
+      ctx.beginPath();                                 // stroked ring = a deliberate "stop" marker
+      ctx.arc(p.x, p.y, 5 * sr, 0, Math.PI * 2);
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = STATION_RING;
+      ctx.stroke();
+      ctx.beginPath();                                 // bright core landmark
+      ctx.arc(p.x, p.y, 2.4 * sr, 0, Math.PI * 2);
       ctx.fillStyle = STATION_CORE;
       ctx.fill();
     }

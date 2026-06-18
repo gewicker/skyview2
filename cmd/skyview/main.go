@@ -76,6 +76,13 @@ func main() {
 	// and the client falls back to the timetable simulation.
 	rail := feed.NewRail(env("OBA_API_KEY", "884a2484-8efe-448e-99b2-05c5ed0ee360"), filepath.Join(*dataDir, "rail-cache.json"))
 
+	// Live buses (same OBA key): Metro + Sound Transit vehicles within the home radius, rail
+	// excluded. The view fn lets the radius/center follow config. Server-side + disk-cached.
+	buses := feed.NewBuses(env("OBA_API_KEY", "884a2484-8efe-448e-99b2-05c5ed0ee360"), filepath.Join(*dataDir, "buses-cache.json"), func() feed.View {
+		c := cfg.Get()
+		return feed.View{Lat: c.CenterLat, Lon: c.CenterLon, RadiusMiles: c.RadiusMiles}
+	})
+
 	var lastMu sync.Mutex
 	var lastNow float64
 	var lastList []aircraft.Aircraft
@@ -99,6 +106,7 @@ func main() {
 			Hub: h, Cfg: cfg, Scenes: scenes, Notable: notable, Snapshot: snapshot, Status: status,
 			Traffic: func() any { return traffic.Latest() },
 			Rail:    func() any { return rail.Latest() },
+			Buses:   func() any { return buses.Latest() },
 		}),
 		// Hardening. No blanket WriteTimeout — it would kill the long-lived /ws connection;
 		// per-write deadlines live in the hub instead.
@@ -116,7 +124,8 @@ func main() {
 	go enr.Run(ctx)
 	go traffic.Run(ctx)
 	go rail.Run(ctx)
-	log.Printf("feed: radio %s every %s (api supplement: %v, wsdot traffic: %v, oba rail: %v)", opts.RadioURL, opts.PollInterval, opts.SupplementAPI, traffic.Enabled(), rail.Enabled())
+	go buses.Run(ctx)
+	log.Printf("feed: radio %s every %s (api supplement: %v, wsdot traffic: %v, oba rail: %v, oba buses: %v)", opts.RadioURL, opts.PollInterval, opts.SupplementAPI, traffic.Enabled(), rail.Enabled(), buses.Enabled())
 
 	go func() {
 		t := time.NewTicker(opts.PollInterval)
