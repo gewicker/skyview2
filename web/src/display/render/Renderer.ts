@@ -6,15 +6,17 @@ import { TrackStore } from "./TrackStore";
 import { pickStatic } from "./navdata";
 import { liveTrains } from "./livetrains";
 import { liveBuses } from "./livebuses";
+import { liveFerries } from "./liveferries";
 import { RAIL_STATIONS } from "./rail";
 import type { Layer, Visible } from "./types";
 import type { Aircraft, Config } from "@shared/types";
 
-// A tapped transit element (train / bus / station) — drives the transit detail card.
+// A tapped transit element (train / bus / station / ferry) — drives the transit detail card.
 export type TransitPick =
   | { kind: "station"; title: string }
   | { kind: "train"; line: string; devSec: number }
-  | { kind: "bus" };
+  | { kind: "bus" }
+  | { kind: "ferry"; title: string; route: string; atDock: boolean; speed: number };
 
 const MILE_M = 1609.34;
 
@@ -176,6 +178,9 @@ export class Renderer {
     }
     if (cfg.showBuses) {
       for (const b of liveBuses()) consider(b.lat, b.lon, () => ({ kind: "bus" }));
+    }
+    if (cfg.showFerries) {
+      for (const fr of liveFerries()) consider(fr.lat, fr.lon, () => ({ kind: "ferry", title: fr.name, route: fr.route, atDock: fr.atDock, speed: fr.speed }));
     }
     return best;
   }

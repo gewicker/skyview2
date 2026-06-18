@@ -96,6 +96,7 @@ export default function Control({ config: c, surface, onChange, onPush, onReset,
         <ListRow label="Home marker"><Switch value={c.showHome} onChange={(v) => set({ showHome: v })} /></ListRow>
         <ListRow label="Light rail"><Switch value={c.showRail} onChange={(v) => set({ showRail: v })} /></ListRow>
         <ListRow label="Buses"><Switch value={c.showBuses} onChange={(v) => set({ showBuses: v })} /></ListRow>
+        <ListRow label="Ferries"><Switch value={c.showFerries} onChange={(v) => set({ showFerries: v })} /></ListRow>
         <ListRow label="Range rings"><Switch value={c.rangeRings} onChange={(v) => set({ rangeRings: v })} /></ListRow>
         <ListRow label="Grid">
           <Segmented<GridOverlay> value={c.gridOverlay}

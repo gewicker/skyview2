@@ -161,6 +161,9 @@ type Config struct {
 	// Live buses (OBA): Metro + Sound Transit vehicles within the home radius — off-able on its own.
 	ShowBuses bool `json:"showBuses"`
 
+	// Live WA State Ferries (WSF) on the Sound.
+	ShowFerries bool `json:"showFerries"`
+
 	// Spotlight.
 	ShowSpotlight     bool    `json:"showSpotlight"`
 	SpotlightRadiusMi float64 `json:"spotlightRadiusMi"`
@@ -208,7 +211,7 @@ func Default() Config {
 			Speed: true, Destination: true, Registration: false},
 		ShowAirport: true, ShowApproaches: true, ShowFinal: true, ShowTraffic: true,
 		ShowHome: true, ShowRelative: true, HighlightEmergency: true,
-		ShowNotable: true, NotableFlash: true, ShowWinds: true, ShowPhotos: true, ShowRail: true, ShowBuses: true,
+		ShowNotable: true, NotableFlash: true, ShowWinds: true, ShowPhotos: true, ShowRail: true, ShowBuses: true, ShowFerries: true,
 		BurnInOrbit: false, // IPS panel — no burn-in risk
 		ShowSpotlight: true, SpotlightRadiusMi: 15, SpotlightLat: 47.618431, SpotlightLon: -122.191076,
 		ProcRasterOpacity: 0.5, // overlays off by default; opacity used when raster enabled

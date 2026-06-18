@@ -21,6 +21,7 @@ import { HighwayLayer } from "./render/HighwayLayer";
 import { RailLayer } from "./render/RailLayer";
 import { TrainLayer } from "./render/TrainLayer";
 import { BusLayer } from "./render/BusLayer";
+import { FerryLayer } from "./render/FerryLayer";
 import { VesselLayer } from "./render/VesselLayer";
 import { AIRPORTS } from "./render/airports";
 import { LeaderLayer } from "./render/LeaderLayer";
@@ -120,6 +121,7 @@ export default function Display() {
     r.use(new MarineLayer());  // coastal fog (weather) — under the traffic, off by default
     r.use(new HighwayLayer()); // synthetic road traffic (ambient) — above fog, off by default
     r.use(new VesselLayer());  // synthetic Sound vessel traffic (ambient) — off by default
+    r.use(new FerryLayer());   // live WA State Ferries (WSF) — real boats, above the synthetic vessels
     r.use(new RailLayer());    // Link light rail line + stations — ABOVE the synthetic car/vessel wash
                                // (real infrastructure shouldn't be buried by the congestion ribbon),
                                // still below trains/aircraft (brightness law)
@@ -600,10 +602,13 @@ function routeProvenance(a: Aircraft): { mark: string; word: string; note: strin
 // schedule deviation as plain-English on-time/late/early.
 function TransitCard({ pick, onClose }: { pick: TransitPick; onClose: () => void }) {
   const lineColor = pick.kind === "train" ? (pick.line === "1" ? "#28a05a" : "#3aa0d8")
-    : pick.kind === "bus" ? "#9a8cf0" : "#28e1aa";
+    : pick.kind === "bus" ? "#9a8cf0"
+    : pick.kind === "ferry" ? "#78aacd"
+    : "#28e1aa";
   let title = "", sub = "", detail = "";
   if (pick.kind === "station") { title = pick.title; sub = "Link light rail station"; }
   else if (pick.kind === "train") { title = pick.line + " Line"; sub = "Link train · live"; detail = delayText(pick.devSec); }
+  else if (pick.kind === "ferry") { title = pick.title; sub = pick.route || "WA State Ferry"; detail = pick.atDock ? "At dock" : Math.round(pick.speed) + " kt"; }
   else { title = "Bus"; sub = "Metro / Sound Transit · live"; }
   return (
     <div style={{ position: "absolute", top: 16, right: 16, minWidth: 184,

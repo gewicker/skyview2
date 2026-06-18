@@ -92,6 +92,12 @@ func main() {
 		return feed.View{Lat: c.CenterLat, Lon: c.CenterLon, RadiusMiles: c.RadiusMiles}
 	})
 
+	// Live WA State Ferries (WSF) — reuses the WSDOT Traveler access code (one account, all WSDOT APIs).
+	ferries := feed.NewFerries(env("WSDOT_ACCESS_CODE", "eab60899-d4ba-469c-9221-354c53b781bc"), filepath.Join(*dataDir, "ferries-cache.json"), func() feed.View {
+		c := cfg.Get()
+		return feed.View{Lat: c.CenterLat, Lon: c.CenterLon, RadiusMiles: c.RadiusMiles}
+	})
+
 	var lastMu sync.Mutex
 	var lastNow float64
 	var lastList []aircraft.Aircraft
@@ -116,6 +122,7 @@ func main() {
 			Traffic: func() any { return traffic.Latest() },
 			Rail:    func() any { return rail.Latest() },
 			Buses:   func() any { return buses.Latest() },
+			Ferries: func() any { return ferries.Latest() },
 		}),
 		// Hardening. No blanket WriteTimeout — it would kill the long-lived /ws connection;
 		// per-write deadlines live in the hub instead.
@@ -134,7 +141,8 @@ func main() {
 	go traffic.Run(ctx)
 	go rail.Run(ctx)
 	go buses.Run(ctx)
-	log.Printf("feed: radio %s every %s (api supplement: %v, wsdot traffic: %v, oba rail: %v, oba buses: %v)", opts.RadioURL, opts.PollInterval, opts.SupplementAPI, traffic.Enabled(), rail.Enabled(), buses.Enabled())
+	go ferries.Run(ctx)
+	log.Printf("feed: radio %s every %s (api supplement: %v, wsdot traffic: %v, oba rail: %v, oba buses: %v, wsf ferries: %v)", opts.RadioURL, opts.PollInterval, opts.SupplementAPI, traffic.Enabled(), rail.Enabled(), buses.Enabled(), ferries.Enabled())
 
 	go func() {
 		t := time.NewTicker(opts.PollInterval)
