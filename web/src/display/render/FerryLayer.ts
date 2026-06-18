@@ -3,7 +3,7 @@
 // additive glow / strobe (aircraft-only). Steel blue is clear of the rail jade, bus violet,
 // aircraft cyan/amber, and the gold home beacon. Label-free until tapped.
 import type { Layer, FrameContext } from "./types";
-import { startLiveFerries, tickLiveFerries, liveFerries } from "./liveferries";
+import { startLiveFerries, tickLiveFerries, liveFerries, ferryTerminals } from "./liveferries";
 
 const HULL = "140,195,235"; // brighter steel-cyan so it stands off the teal water
 
@@ -14,11 +14,25 @@ export class FerryLayer implements Layer {
     if (!f.cfg.showFerries) return;
     startLiveFerries();
     tickLiveFerries(f.dt);
-    const ferries = liveFerries();
-    if (!ferries.length) return;
     const ctx = f.ctx, w = f.w, h = f.h;
     ctx.save();
     ctx.lineCap = "round";
+
+    // Terminal anchors — subordinate dock markers (under the vessels). Small ringed squares so
+    // they read as fixed infrastructure, not traffic. Drawn even when no vessel is underway.
+    for (const t of ferryTerminals()) {
+      const p = f.cam.project(t.lat, t.lon);
+      if (p.x < -8 || p.x > w + 8 || p.y < -8 || p.y > h + 8) continue;
+      ctx.fillStyle = `rgba(${HULL},0.20)`;
+      ctx.strokeStyle = `rgba(${HULL},0.5)`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.rect(p.x - 2.6, p.y - 2.6, 5.2, 5.2);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    const ferries = liveFerries();
     for (const v of ferries) {
       const p = f.cam.project(v.lat, v.lon);
       if (p.x < -16 || p.x > w + 16 || p.y < -16 || p.y > h + 16) continue;
