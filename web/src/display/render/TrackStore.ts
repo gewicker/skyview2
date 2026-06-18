@@ -276,7 +276,13 @@ function predictPos(hist: Sample[], a: Aircraft, t: number): { lat: number; lon:
       const k = Math.min(age, 600) / span;
       return { lat: last.lat + (last.lat - ref.lat) * k, lon: last.lon + (last.lon - ref.lon) * k };
     }
-    return deadReckon(last, a.gs, a.track, t - last.t);
+    // Slow airborne traffic: the reported track is unreliable at low speed and fixes are sparser,
+    // so dead-reckoning along it overshoots and the next fix snaps it back (rubberband). Hold a very
+    // slow / hovering contact at its last fix; cap the coast short for slow GA; only fast traffic
+    // (reliable track) coasts the full window.
+    const gs = a.gs ?? 0;
+    if (gs < 30) return { lat: last.lat, lon: last.lon };
+    return deadReckon(last, gs, a.track, Math.min(t - last.t, gs >= 120 ? 10000 : 2500));
   }
   for (let i = hist.length - 1; i > 0; i--) {
     const a = hist[i - 1], b = hist[i];
