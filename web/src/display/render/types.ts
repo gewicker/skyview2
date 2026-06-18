@@ -56,6 +56,8 @@ export interface FrameContext {
    *  spotlight layer suppresses its auto overhead placard so the canvas never repaints
    *  over a DOM card. */
   cardOpen?: boolean;
+  /** The tapped ferry (vessel id) whose crossing lane the FerryRouteLayer draws, if any. */
+  selectedFerryId?: number;
 }
 
 // A render layer. GL-ready by design: a layer can later swap its draw() to a WebGL

@@ -22,6 +22,7 @@ import { RailLayer } from "./render/RailLayer";
 import { TrainLayer } from "./render/TrainLayer";
 import { BusLayer } from "./render/BusLayer";
 import { FerryLayer } from "./render/FerryLayer";
+import { FerryRouteLayer } from "./render/FerryRouteLayer";
 import { AIRPORTS } from "./render/airports";
 import { LeaderLayer } from "./render/LeaderLayer";
 import { AircraftLayer } from "./render/AircraftLayer";
@@ -119,6 +120,7 @@ export default function Display() {
     r.use(new StaticOverlayLayer([new PlaceLabelsLayer()], (f) => f.cfg.mapStyle));
     r.use(new MarineLayer());  // coastal fog (weather) — under the traffic, off by default
     r.use(new HighwayLayer()); // synthetic road traffic (ambient) — above fog, off by default
+    r.use(new FerryRouteLayer()); // dep→arr crossing lane for the tapped ferry (under the hull)
     r.use(new FerryLayer());   // live WA State Ferries (WSF) — real boats (deprecated the synthetic VesselLayer)
     r.use(new RailLayer());    // Link light rail line + stations — ABOVE the synthetic car/vessel wash
                                // (real infrastructure shouldn't be buried by the congestion ribbon),
@@ -256,11 +258,12 @@ export default function Display() {
         if (hex) {
           r.select(hex); setSelected(hex);
           r.selectNav(null); setSelectedNav(null);
-          setTransit(null);
+          setTransit(null); r.selectFerry(null);
         } else {
           const tp = r.pickTransit(p.x, p.y); // a train/bus/station, before navaids
           if (tp) {
             setTransit(tp);
+            r.selectFerry(tp.kind === "ferry" ? tp.id : null); // crossing lane for a tapped ferry
             r.select(null); setSelected(null);
             r.selectNav(null); setSelectedNav(null);
             r.dismissSpotlight();
@@ -268,7 +271,7 @@ export default function Display() {
             const nid = r.pickStatic(p.x, p.y);
             r.selectNav(nid); setSelectedNav(nid);
             r.select(null); setSelected(null);
-            setTransit(null);
+            setTransit(null); r.selectFerry(null);
             r.dismissSpotlight(); // tapping off a plane also drops the overhead card
           }
         }
@@ -333,7 +336,7 @@ export default function Display() {
         <TapCard a={sel} cfg={state.config}
           onClose={() => { rendererRef.current?.select(null); rendererRef.current?.dismissSpotlight(); setSelected(null); }} />
       )}
-      {transit && <TransitCard pick={transit} onClose={() => setTransit(null)} />}
+      {transit && <TransitCard pick={transit} onClose={() => { setTransit(null); rendererRef.current?.selectFerry(null); }} />}
 
       {/* On-screen quick controls — auto-hide after inactivity. */}
       <div style={{ position: "absolute", right: 16, bottom: 16, display: "flex", flexDirection: "column", gap: 10, ...autoHide(uiVisible) }}>

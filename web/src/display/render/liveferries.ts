@@ -17,6 +17,7 @@ interface Veh {
 }
 
 export interface LiveFerry {
+  id: number;
   lat: number; lon: number; alat: number; alon: number;
   fade: number; name: string; route: string; speed: number; atDock: boolean;
   depLat: number; depLon: number; arrLat: number; arrLon: number;
@@ -82,11 +83,11 @@ export function tickLiveFerries(dt: number): void {
 export function liveFerries(): LiveFerry[] {
   const now = Date.now();
   const out: LiveFerry[] = [];
-  for (const v of vessels.values()) {
+  for (const [id, v] of vessels) {
     const age = (now - v.lastSeen) / 1000;
     const fade = age <= STALE_S ? 1 : age >= DROP_S ? 0 : 1 - (age - STALE_S) / (DROP_S - STALE_S);
     if (fade <= 0) continue;
-    out.push({ lat: v.lat, lon: v.lon, alat: v.alat, alon: v.alon, fade, name: v.name, route: v.route, speed: v.speed, atDock: v.atDock,
+    out.push({ id, lat: v.lat, lon: v.lon, alat: v.alat, alon: v.alon, fade, name: v.name, route: v.route, speed: v.speed, atDock: v.atDock,
       depLat: v.depLat, depLon: v.depLon, arrLat: v.arrLat, arrLon: v.arrLon });
   }
   return out;

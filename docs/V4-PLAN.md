@@ -117,9 +117,21 @@ and terminal anchors (Batch 2). Replace hand-placed seaplane bases with FAA/OSM 
 ## Batch 5 — Train route-flow geometry (ordered per-line polyline)
 Stitch OSM **route relations** in `scripts/get-rail-osm.ps1` → `RAIL_LINES` including tunnels,
 with a **per-segment tunnel flag**. **Unblocks:** data-art "A" (flowing crest) and the
-**underground-vs-above-ground** train animation (expert-review item). Feeds train route-flow
-(Batch 3.5). **Risk:** medium (OSM relation stitching is fiddly). **Verify:** rendered line
-matches real alignment incl. tunnel segments.
+**underground-vs-above-ground** train animation. Feeds train route-flow (Batch 3.5).
+**Risk:** medium (OSM relation stitching is fiddly). **Verify:** rendered line matches real
+alignment incl. tunnel segments.
+
+### CONFIRMED BROKEN — underground train animation (George 2026-06-18)
+The current train animation "doesn't make sense" underground. Two coupled problems flagged for
+**design-expert review**:
+1. **Coordinate / line tracking underground.** OBA GPS fixes are sparse/absent in tunnels (DSTT
+   downtown, Beacon Hill, U-District→Northgate), so trains jump, freeze, or surface in the wrong
+   place. Needs the ordered tunnel-inclusive polyline (this batch) + dead-reckoning along it.
+2. **Animation grammar underground.** A train in a tunnel shouldn't render as a surface bead in a
+   wrong spot; it needs a distinct treatment (e.g. ghosted/dimmed, paced along the tunnel
+   centerline by timetable until it resurfaces). Ties to the timetable-paced prediction (Batch 3).
+
+Design proposal being drafted to `docs/UNDERGROUND-RAIL-DESIGN.md`.
 
 ---
 
@@ -160,6 +172,17 @@ collapse the two route booleans into one confidence enum) into v4 or carry to v5
 Rationale: kill the visible bug, then build the shared substrate (`path.ts` + terminal coords)
 before anything that depends on it, ferries as the simplest end-to-end proof of the route-flow
 pattern, rail geometry last among the core work because OSM stitching is the fiddliest piece.
+
+## Owner backlog additions (2026-06-18)
+- **Ferries more noticeable + speed-scaled animated wake — DONE 2026-06-18.** `FerryLayer.ts`:
+  ~1.3x larger hull, wider halo, brighter core; replaced the lagging-anchor wake with a
+  speed-scaled V-wake astern (length + spread + animated flow-rate all grow with speed). Shipped
+  with the ferry crossing-lane work.
+- **Strobe-light intensity — design-expert review.** Owner wants a design opinion on the intensity
+  of the aircraft strobe/beacon lights (always-on bedside screen → glare/comfort tradeoff).
+  Proposal being drafted to `docs/STROBE-INTENSITY-DESIGN.md`.
+- **Underground light rail — design-expert review (BROKEN).** See Batch 5; proposal in
+  `docs/UNDERGROUND-RAIL-DESIGN.md`.
 
 ## Cross-cutting reminders (from memory / handoff)
 - **Compile gate is the Pi** (`make pi`); the Cowork bash mount is stale on edits and can't build

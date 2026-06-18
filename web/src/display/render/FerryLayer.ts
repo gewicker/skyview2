@@ -1,6 +1,6 @@
-// Live WA State Ferries as cool steel-blue markers gliding the Sound, each trailing a soft white
-// wake (from the lagging anchor). Real marine traffic — sits in the ground tier below aircraft, no
-// additive glow / strobe (aircraft-only). Steel blue is clear of the rail jade, bus violet,
+// Live WA State Ferries as cool steel-blue markers gliding the Sound, each trailing a speed-scaled
+// V-wake astern (length, spread, and flow-rate grow with speed). Real marine traffic — sits in the
+// ground tier below aircraft, no additive glow / strobe (aircraft-only). Steel blue is clear of the rail jade, bus violet,
 // aircraft cyan/amber, and the gold home beacon. Label-free until tapped.
 import type { Layer, FrameContext } from "./types";
 import { startLiveFerries, tickLiveFerries, liveFerries, ferryTerminals } from "./liveferries";
@@ -33,48 +33,76 @@ export class FerryLayer implements Layer {
     }
 
     const ferries = liveFerries();
+    const t = f.t;
     for (const v of ferries) {
       const p = f.cam.project(v.lat, v.lon);
-      if (p.x < -16 || p.x > w + 16 || p.y < -16 || p.y > h + 16) continue;
+      if (p.x < -28 || p.x > w + 28 || p.y < -28 || p.y > h + 28) continue;
       const a = v.fade;
       const ap = f.cam.project(v.alat, v.alon);
       const dx = p.x - ap.x, dy = p.y - ap.y;
       const moving = !v.atDock && dx * dx + dy * dy > 1.5; // heading derived from screen motion (rotation-proof)
       const ang = moving ? Math.atan2(dy, dx) : 0;
-      // wake from the lagging anchor (only underway)
-      if (moving) {
-        const grad = ctx.createLinearGradient(ap.x, ap.y, p.x, p.y);
-        grad.addColorStop(0, "rgba(225,238,248,0)");
-        grad.addColorStop(1, `rgba(225,238,248,${0.45 * a})`);
-        ctx.strokeStyle = grad;
-        ctx.lineWidth = 2.6;
-        ctx.beginPath();
-        ctx.moveTo(ap.x, ap.y);
-        ctx.lineTo(p.x, p.y);
-        ctx.stroke();
-      }
-      // soft halo (depth without glow)
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${HULL},${0.2 * a})`;
-      ctx.fill();
-      // a boat HULL — pointed bow toward travel (flat-stern; oriented from motion, level when docked)
+      const s01 = Math.min(1.2, Math.max(0, v.speed / 18)); // speed vs ~cruise (≈18 kt)
+
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.rotate(ang);
+
+      // Speed-scaled V-wake astern: length + spread grow with speed, and the foam "flows" aft via an
+      // animated dash offset whose rate also scales with speed — so a faster boat plainly reads as
+      // faster. Calm by design (a slow scroll, no strobe). Drawn under the hull.
+      if (moving && s01 > 0.05) {
+        const len = 12 + 34 * s01;  // px of wake astern
+        const spread = 3 + 5 * s01; // half-width of the V at its tail
+        const stern = -8;
+        ctx.lineCap = "round";
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([5, 5]);
+        ctx.lineDashOffset = -((t * (20 + 60 * s01)) % 10); // flow aft, faster when faster
+        for (const sgn of [-1, 1]) {
+          const g = ctx.createLinearGradient(stern, 0, stern - len, sgn * spread);
+          g.addColorStop(0, `rgba(228,240,250,${0.5 * a})`);
+          g.addColorStop(1, "rgba(228,240,250,0)");
+          ctx.strokeStyle = g;
+          ctx.beginPath();
+          ctx.moveTo(stern, 0);
+          ctx.lineTo(stern - len, sgn * spread);
+          ctx.stroke();
+        }
+        // soft centerline froth
+        const cg = ctx.createLinearGradient(stern, 0, stern - len * 0.8, 0);
+        cg.addColorStop(0, `rgba(228,240,250,${0.4 * a})`);
+        cg.addColorStop(1, "rgba(228,240,250,0)");
+        ctx.strokeStyle = cg;
+        ctx.beginPath();
+        ctx.moveTo(stern, 0);
+        ctx.lineTo(stern - len * 0.8, 0);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.lineDashOffset = 0;
+      }
+
+      // soft halo (depth without glow) — wider so the boat reads at a glance across the Sound
       ctx.beginPath();
-      ctx.moveTo(8, 0);       // bow
-      ctx.lineTo(1.5, -3.4);
-      ctx.lineTo(-6, -2.8);   // stern
-      ctx.lineTo(-6, 2.8);
-      ctx.lineTo(1.5, 3.4);
-      ctx.closePath();
-      ctx.fillStyle = `rgba(${HULL},${0.95 * a})`;
+      ctx.arc(0, 0, 13, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${HULL},${0.22 * a})`;
       ctx.fill();
+
+      // a boat HULL — pointed bow toward travel (flat-stern). ~1.3x larger than before for presence.
+      ctx.beginPath();
+      ctx.moveTo(10.5, 0);     // bow
+      ctx.lineTo(2, -4.4);
+      ctx.lineTo(-7.8, -3.6);  // stern
+      ctx.lineTo(-7.8, 3.6);
+      ctx.lineTo(2, 4.4);
+      ctx.closePath();
+      ctx.fillStyle = `rgba(${HULL},${0.98 * a})`;
+      ctx.fill();
+
       // bright deckhouse core — the "there's a boat here" point
       ctx.beginPath();
-      ctx.arc(-0.5, 0, 1.8, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(238,246,252,${0.98 * a})`;
+      ctx.arc(-0.5, 0, 2.2, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(238,246,252,${0.99 * a})`;
       ctx.fill();
       ctx.restore();
     }

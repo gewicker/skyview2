@@ -16,7 +16,7 @@ export type TransitPick =
   | { kind: "station"; title: string }
   | { kind: "train"; line: string; devSec: number }
   | { kind: "bus" }
-  | { kind: "ferry"; title: string; route: string; atDock: boolean; speed: number };
+  | { kind: "ferry"; id: number; title: string; route: string; atDock: boolean; speed: number };
 
 const MILE_M = 1609.34;
 
@@ -43,6 +43,7 @@ export class Renderer {
   private lastVisible: Visible[] = [];       // visible set from the last draw (reused by hit-tests)
   private spotDismissAt = 0;                  // last "dismiss overhead card" tap
   private cardOpen = false;                   // a DOM detail card (aircraft/transit) is open
+  private selectedFerryId = 0;                // tapped ferry → draw its crossing lane (0 = none)
   private releaseTimer = 0;
   private lastInteractAt = 0;                // for the uncap + low-detail window
 
@@ -150,6 +151,8 @@ export class Renderer {
   /** Tell the renderer whether a DOM detail card is currently open, so the spotlight
    *  layer can suppress its canvas placard and never paint over it. */
   setCardOpen(open: boolean): void { this.cardOpen = open; }
+  /** The tapped ferry whose crossing lane the FerryRouteLayer draws (null clears it). */
+  selectFerry(id: number | null): void { this.selectedFerryId = id || 0; }
   /** Dismiss the auto overhead (spotlight) card for whoever is featured right now. */
   dismissSpotlight(): void { this.spotDismissAt = performance.now(); }
   getView(): View { return this.view(); }
@@ -184,7 +187,7 @@ export class Renderer {
       for (const b of liveBuses()) consider(b.lat, b.lon, () => ({ kind: "bus" }));
     }
     if (cfg.showFerries) {
-      for (const fr of liveFerries()) consider(fr.lat, fr.lon, () => ({ kind: "ferry", title: fr.name, route: fr.route, atDock: fr.atDock, speed: fr.speed }));
+      for (const fr of liveFerries()) consider(fr.lat, fr.lon, () => ({ kind: "ferry", id: fr.id, title: fr.name, route: fr.route, atDock: fr.atDock, speed: fr.speed }));
     }
     return best;
   }
@@ -249,6 +252,7 @@ export class Renderer {
       selectedNavId: this.selectedNav || undefined,
       spotDismissAt: this.spotDismissAt || undefined, interacting,
       cardOpen: this.cardOpen || undefined,
+      selectedFerryId: this.selectedFerryId || undefined,
     };
     for (const l of this.layers) l.draw(f);
   }
