@@ -188,6 +188,11 @@ pattern, rail geometry last among the core work because OSM stitching is the fid
   glide smoothly AND schedule-accurately between sparse OBA polls (above ground too, not just
   tunnels). Covered by the underground-rail implementation task.
 
+- **Improve ferry smoothness on transit (George 2026-06-18).** Ferries currently ease raw lat/lon
+  (liveferries.ts). Apply the same prediction approach as rail: pace the vessel along the dep→arr
+  crossing lane (reuse `path.ts` over a 2-vertex line from the terminal coords already enriched) so
+  it glides smoothly between sparse WSF polls. Marine analog of the rail arc-length pacing.
+
 ## Cross-cutting reminders (from memory / handoff)
 - **Compile gate is the Pi** (`make pi`); the Cowork bash mount is stale on edits and can't build
   Go — trust the Read tool + the Pi gate, not bash greps of the mount.

@@ -85,6 +85,24 @@ export class TrainLayer implements Layer {
       const c = desat(lateTint(baseRgb, t.devSec), (1 - t.fade) * 0.6); // lateness tint, then fade-grey
       const base = rgbStr(c);
       const a = t.fade;
+      // Submerged (in a tunnel): a quiet, schedule-paced GHOST — a hollow dimmed ring riding a short
+      // along-track tail, lateness tint retained, no bright core or shimmer. It wears the
+      // "scheduled, not live" costume because underground the train IS schedule-paced; it holds at a
+      // fixed dim (it must NOT keep fading toward zero — that is the dead-feed grammar).
+      if (t.submerged) {
+        const sp = f.cam.project(t.alat, t.alon);
+        const da = a * 0.6;
+        const tg = ctx.createLinearGradient(sp.x, sp.y, p.x, p.y);
+        tg.addColorStop(0, `rgba(${base},0)`);
+        tg.addColorStop(1, `rgba(${base},${(0.3 * da).toFixed(3)})`);
+        ctx.strokeStyle = tg;
+        ctx.lineWidth = 1.8;
+        ctx.beginPath(); ctx.moveTo(sp.x, sp.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+        ctx.beginPath(); ctx.arc(p.x, p.y, 3.6, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${base},${(0.8 * da).toFixed(3)})`;
+        ctx.lineWidth = 1.4; ctx.stroke();
+        continue;
+      }
       // comet tail from the lagging anchor
       const ap = f.cam.project(t.alat, t.alon);
       const grad = ctx.createLinearGradient(ap.x, ap.y, p.x, p.y);

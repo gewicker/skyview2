@@ -4,8 +4,28 @@
 // HOME beacon. Nominal: no live trains — just the line and stations. Off-screen culled; the track
 // is projected into a view-keyed cache (reprojected only on pan/zoom), like the highway layer.
 import type { Layer, FrameContext } from "./types";
-import { RAIL_SEGMENTS, RAIL_STATIONS } from "./rail";
+import { RAIL_SEGMENTS, RAIL_STATIONS, RAIL_LINES } from "./rail";
 import { liveTrains } from "./livetrains";
+
+// Underground spans of each line (runs of consecutive tunnel segments), as [lat,lon] polylines —
+// drawn as a recessed dashed hairline beneath the surface ribbon so the eye reads "the track
+// continues below." Computed once from the tunnel-aware RAIL_LINES.
+function buildTunnelSpans(): [number, number][][] {
+  const out: [number, number][][] = [];
+  for (const line of RAIL_LINES) {
+    const p = line.path;
+    let run: [number, number][] = [];
+    for (let i = 0; i < p.length - 1; i++) {
+      if (p[i].tunnel && p[i + 1].tunnel) {
+        if (run.length === 0) run.push([p[i].lat, p[i].lon]);
+        run.push([p[i + 1].lat, p[i + 1].lon]);
+      } else if (run.length) { out.push(run); run = []; }
+    }
+    if (run.length) out.push(run);
+  }
+  return out;
+}
+const TUNNEL_SPANS = buildTunnelSpans();
 
 const LINE = "rgba(40,225,170,";             // bright transit JADE (alpha appended) — more saturated and
                                              // brighter than the cool satellite grade, and clear of the
@@ -19,6 +39,7 @@ interface Pt { x: number; y: number }
 export class RailLayer implements Layer {
   readonly name = "rail";
   private proj: Pt[][] = [];
+  private projTun: Pt[][] = [];
   private projKey = "";
   private rings: { x: number; y: number; t0: number }[] = []; // one-shot arrival rings at stations
   private lastFire = new Map<string, number>();               // per-station ring cooldown (sec)
@@ -34,6 +55,12 @@ export class RailLayer implements Layer {
       pts.length = 0;
       for (const [lat, lon] of RAIL_SEGMENTS[i]) pts.push(f.cam.project(lat, lon));
     }
+    for (let i = 0; i < TUNNEL_SPANS.length; i++) {
+      let pts = this.projTun[i];
+      if (!pts) { pts = []; this.projTun[i] = pts; }
+      pts.length = 0;
+      for (const [lat, lon] of TUNNEL_SPANS[i]) pts.push(f.cam.project(lat, lon));
+    }
   }
 
   draw(f: FrameContext): void {
@@ -46,6 +73,16 @@ export class RailLayer implements Layer {
     ctx.save();
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
+    // Subsurface track: dashed, dimmed, NO glow (the bloom is what makes the surface line read as
+    // lit infrastructure; dropping it makes the dashed hairline read as "below ground"). Drawn first
+    // so the surface ribbon, stations, and trains all sit above it.
+    if (this.projTun.length) {
+      ctx.setLineDash([6 * wm, 7 * wm]);
+      ctx.strokeStyle = LINE + "0.3)";
+      ctx.lineWidth = 1.6 * wm;
+      for (const pts of this.projTun) if (pts.length >= 2 && onScreen(pts, w, h)) stroke(ctx, pts);
+      ctx.setLineDash([]);
+    }
     // Line: a soft glow under-stroke + a clean core so it reads as a distinct transit ribbon.
     for (let i = 0; i < this.proj.length; i++) {
       const pts = this.proj[i];
