@@ -98,6 +98,12 @@ func main() {
 		return feed.View{Lat: c.CenterLat, Lon: c.CenterLon, RadiusMiles: c.RadiusMiles}
 	})
 
+	// Live Fire/EMS 911 incidents (Seattle Fire real-time dispatch open-data feed — keyless).
+	fire := feed.NewFire(filepath.Join(*dataDir, "fire-cache.json"), func() feed.View {
+		c := cfg.Get()
+		return feed.View{Lat: c.CenterLat, Lon: c.CenterLon, RadiusMiles: c.RadiusMiles}
+	})
+
 	var lastMu sync.Mutex
 	var lastNow float64
 	var lastList []aircraft.Aircraft
@@ -123,6 +129,7 @@ func main() {
 			Rail:    func() any { return rail.Latest() },
 			Buses:   func() any { return buses.Latest() },
 			Ferries: func() any { return ferries.Latest() },
+			Fire:    func() any { return fire.Latest() },
 		}),
 		// Hardening. No blanket WriteTimeout — it would kill the long-lived /ws connection;
 		// per-write deadlines live in the hub instead.
@@ -142,7 +149,8 @@ func main() {
 	go rail.Run(ctx)
 	go buses.Run(ctx)
 	go ferries.Run(ctx)
-	log.Printf("feed: radio %s every %s (api supplement: %v, wsdot traffic: %v, oba rail: %v, oba buses: %v, wsf ferries: %v)", opts.RadioURL, opts.PollInterval, opts.SupplementAPI, traffic.Enabled(), rail.Enabled(), buses.Enabled(), ferries.Enabled())
+	go fire.Run(ctx)
+	log.Printf("feed: radio %s every %s (api supplement: %v, wsdot traffic: %v, oba rail: %v, oba buses: %v, wsf ferries: %v, fire911: %v)", opts.RadioURL, opts.PollInterval, opts.SupplementAPI, traffic.Enabled(), rail.Enabled(), buses.Enabled(), ferries.Enabled(), fire.Enabled())
 
 	go func() {
 		t := time.NewTicker(opts.PollInterval)

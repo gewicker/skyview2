@@ -49,6 +49,8 @@ export interface Config {
   showRail: boolean; // Link light rail line + stations (static, GPS/OSM)
   showBuses: boolean; // live Metro + Sound Transit buses (OBA) within the home radius
   showFerries: boolean; // live WA State Ferries (WSF) on the Sound
+  showFireEms: boolean; // live Fire/EMS 911 incidents (Seattle Fire real-time dispatch)
+  fireEmsArrivalCue: boolean; // the one-time arrival ripple (off = fully static)
 
   monitorMode: MonitorMode; lightsOutHour: number; lightsOutBrightness: number; muteUntil: number; showCursor: boolean;
 }

@@ -23,6 +23,8 @@ import { TrainLayer } from "./render/TrainLayer";
 import { BusLayer } from "./render/BusLayer";
 import { FerryLayer } from "./render/FerryLayer";
 import { FerryRouteLayer } from "./render/FerryRouteLayer";
+import { FireEmsLayer } from "./render/FireEmsLayer";
+import { classifyIncident } from "./render/livefire";
 import { AIRPORTS } from "./render/airports";
 import { LeaderLayer } from "./render/LeaderLayer";
 import { AircraftLayer } from "./render/AircraftLayer";
@@ -119,6 +121,7 @@ export default function Display() {
     r.use(new NavaidLayer());    // VOR roses / fixes (under traffic), off by default
     r.use(new StaticOverlayLayer([new PlaceLabelsLayer()], (f) => f.cfg.mapStyle));
     r.use(new MarineLayer());  // coastal fog (weather) — under the traffic, off by default
+    r.use(new FireEmsLayer()); // live Fire/EMS 911 incidents — subordinate ground markers, under all traffic
     r.use(new HighwayLayer()); // synthetic road traffic (ambient) — above fog, off by default
     r.use(new FerryRouteLayer()); // dep→arr crossing lane for the tapped ferry (under the hull)
     r.use(new FerryLayer());   // live WA State Ferries (WSF) — real boats (deprecated the synthetic VesselLayer)
@@ -609,11 +612,13 @@ function TransitCard({ pick, onClose }: { pick: TransitPick; onClose: () => void
   const lineColor = pick.kind === "train" ? (pick.line === "1" ? "#28a05a" : "#3aa0d8")
     : pick.kind === "bus" ? "#9a8cf0"
     : pick.kind === "ferry" ? "#78aacd"
+    : pick.kind === "fire" ? incidentColor(pick.title)
     : "#28e1aa";
   let title = "", sub = "", detail = "";
   if (pick.kind === "station") { title = pick.title; sub = "Link light rail station"; }
   else if (pick.kind === "train") { title = pick.line + " Line"; sub = "Link train · live"; detail = delayText(pick.devSec); }
   else if (pick.kind === "ferry") { title = pick.title; sub = pick.route || "WA State Ferry"; detail = pick.atDock ? "At dock" : Math.round(pick.speed) + " kt"; }
+  else if (pick.kind === "fire") { title = pick.title; sub = pick.address || "Fire/EMS 911 dispatch"; detail = agoText(pick.time); }
   else { title = "Bus"; sub = "Metro / Sound Transit · live"; }
   return (
     <div style={{ position: "absolute", left: 16, bottom: 160, minWidth: 184,
@@ -635,6 +640,15 @@ function delayText(devSec: number): string {
   if (Math.abs(devSec) < 60) return "On time";
   const m = Math.round(Math.abs(devSec) / 60);
   return devSec > 0 ? m + " min late" : m + " min early";
+}
+function agoText(t: number): string {
+  const m = Math.round((Date.now() - t) / 60000);
+  if (m <= 0) return "just now";
+  return m === 1 ? "1 min ago" : m + " min ago";
+}
+function incidentColor(type: string): string {
+  const c = classifyIncident(type);
+  return c === "major" ? "#d66c48" : c === "vehicle" ? "#c69c60" : c === "medical" ? "#968cb4" : "#808e9e";
 }
 
 // The local field an aircraft is physically landing at — the SAME approach-physics authority

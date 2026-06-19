@@ -41,6 +41,8 @@ type Deps struct {
 	Buses func() any
 	// Ferries returns the latest WSF live ferry snapshot. May be nil when unwired.
 	Ferries func() any
+	// Fire returns the latest Seattle Fire 911 incident snapshot. May be nil when unwired.
+	Fire func() any
 }
 
 // New builds the HTTP handler: WS, REST, and the embedded SPA.
@@ -110,6 +112,15 @@ func New(d Deps) http.Handler {
 			return
 		}
 		writeJSON(w, d.Ferries())
+	})
+
+	// Live Fire/EMS 911 incidents (Seattle Fire real-time dispatch). Empty when unwired.
+	mux.HandleFunc("/api/fire", func(w http.ResponseWriter, r *http.Request) {
+		if d.Fire == nil {
+			writeJSON(w, map[string]any{"incidents": []any{}, "updated": 0})
+			return
+		}
+		writeJSON(w, d.Fire())
 	})
 
 	// Diagnostics: feed health + live counts + runtime stats (for the Pi and dev).

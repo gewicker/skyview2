@@ -7,6 +7,7 @@ import { pickStatic } from "./navdata";
 import { liveTrains } from "./livetrains";
 import { liveBuses } from "./livebuses";
 import { liveFerries } from "./liveferries";
+import { fireIncidents } from "./livefire";
 import { RAIL_STATIONS } from "./rail";
 import type { Layer, Visible } from "./types";
 import type { Aircraft, Config } from "@shared/types";
@@ -16,7 +17,8 @@ export type TransitPick =
   | { kind: "station"; title: string }
   | { kind: "train"; line: string; devSec: number }
   | { kind: "bus" }
-  | { kind: "ferry"; id: number; title: string; route: string; atDock: boolean; speed: number };
+  | { kind: "ferry"; id: number; title: string; route: string; atDock: boolean; speed: number }
+  | { kind: "fire"; id: string; title: string; address: string; time: number };
 
 const MILE_M = 1609.34;
 
@@ -188,6 +190,9 @@ export class Renderer {
     }
     if (cfg.showFerries) {
       for (const fr of liveFerries()) consider(fr.lat, fr.lon, () => ({ kind: "ferry", id: fr.id, title: fr.name, route: fr.route, atDock: fr.atDock, speed: fr.speed }));
+    }
+    if (cfg.showFireEms) {
+      for (const inc of fireIncidents()) consider(inc.lat, inc.lon, () => ({ kind: "fire", id: inc.id, title: inc.type, address: inc.address, time: inc.time }));
     }
     return best;
   }
