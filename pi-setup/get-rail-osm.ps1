@@ -83,31 +83,53 @@ $allStations = New-Object System.Collections.ArrayList # back-compat RAIL_STATIO
 
 foreach ($id in ($bestRel.Keys | Sort-Object)) {
   $rel = $bestRel[$id].rel
-  # ordered list of member way ids (skip platform/stop node members; we want the running track)
-  $memberWays = $rel.members | Where-Object { $_.type -eq "way" }
-
-  # Stitch member ways in order with reverse-and-snap. `path` = list of @{lat,lon,tunnel}.
-  $path = New-Object System.Collections.ArrayList
-  foreach ($mw in $memberWays) {
+  # GREEDY nearest-endpoint chaining. Relation member ORDER is unreliable (members can be out of
+  # order, reversed, or include stray crossover/siding/opposite-direction ways), and trusting it
+  # produced straight chords across the map. Instead: start at the north terminus and repeatedly
+  # attach the unused way whose endpoint is NEAREST the growing tail, but only within GAP_MAX — a
+  # way that doesn't actually connect is left out rather than chorded in.
+  $pool = New-Object System.Collections.ArrayList
+  foreach ($mw in ($rel.members | Where-Object { $_.type -eq "way" })) {
     $w = $waysById[[string]$mw.ref]
     if (-not $w) { continue }
     $g = @($w.geom)
     if ($g.Count -lt 2) { continue }
-    if ($path.Count -eq 0) {
-      foreach ($pt in $g) { [void]$path.Add(@{ lat = $pt.lat; lon = $pt.lon; tunnel = $w.tunnel }) }
-      continue
-    }
+    [void]$pool.Add(@{ pts = $g; tunnel = $w.tunnel; used = $false })
+  }
+  if ($pool.Count -eq 0) { Write-Host "WARN: line $id has no member ways"; continue }
+
+  # Start from the northernmost endpoint (Lynnwood is the north terminus of both lines).
+  $startI = 0; $startRev = $false; $maxLat = -999.0
+  for ($i = 0; $i -lt $pool.Count; $i++) {
+    $g = $pool[$i].pts
+    if ($g[0].lat -gt $maxLat) { $maxLat = $g[0].lat; $startI = $i; $startRev = $false }
+    if ($g[$g.Count - 1].lat -gt $maxLat) { $maxLat = $g[$g.Count - 1].lat; $startI = $i; $startRev = $true }
+  }
+  $path = New-Object System.Collections.ArrayList
+  $sg = @($pool[$startI].pts); if ($startRev) { [array]::Reverse($sg) }
+  foreach ($pt in $sg) { [void]$path.Add(@{ lat = $pt.lat; lon = $pt.lon; tunnel = $pool[$startI].tunnel }) }
+  $pool[$startI].used = $true
+
+  $GAP_MAX = 0.0018  # ~150-200 m: max join gap to accept; a km-long chord is rejected
+  while ($true) {
     $tail = $path[$path.Count - 1]
-    $dStart = Dist2 $tail.lat $tail.lon $g[0].lat $g[0].lon
-    $dEnd = Dist2 $tail.lat $tail.lon $g[$g.Count - 1].lat $g[$g.Count - 1].lon
-    if ($dEnd -lt $dStart) { [array]::Reverse($g) }  # reverse so the way's near end joins the tail
-    # drop the duplicated shared join vertex if it coincides with the tail
+    $bestI = -1; $bestD = [double]::MaxValue; $bestRev = $false
+    for ($i = 0; $i -lt $pool.Count; $i++) {
+      if ($pool[$i].used) { continue }
+      $g = $pool[$i].pts
+      $df = Dist2 $tail.lat $tail.lon $g[0].lat $g[0].lon
+      $dl = Dist2 $tail.lat $tail.lon $g[$g.Count - 1].lat $g[$g.Count - 1].lon
+      if ($df -lt $bestD) { $bestD = $df; $bestI = $i; $bestRev = $false }
+      if ($dl -lt $bestD) { $bestD = $dl; $bestI = $i; $bestRev = $true }
+    }
+    if ($bestI -lt 0 -or $bestD -gt ($GAP_MAX * $GAP_MAX)) { break }
+    $w = $pool[$bestI]; $g = @($w.pts); if ($bestRev) { [array]::Reverse($g) }
     $startIdx = 0
     if ((Dist2 $tail.lat $tail.lon $g[0].lat $g[0].lon) -lt ($JOIN_EPS * $JOIN_EPS)) { $startIdx = 1 }
-    for ($i = $startIdx; $i -lt $g.Count; $i++) {
-      [void]$path.Add(@{ lat = $g[$i].lat; lon = $g[$i].lon; tunnel = $w.tunnel })
-    }
+    for ($k = $startIdx; $k -lt $g.Count; $k++) { [void]$path.Add(@{ lat = $g[$k].lat; lon = $g[$k].lon; tunnel = $w.tunnel }) }
+    $w.used = $true
   }
+  $dropped = ($pool | Where-Object { -not $_.used }).Count
   if ($path.Count -lt 2) { Write-Host "WARN: line $id produced no path"; continue }
 
   # Snap stations onto this line -> ascending stationIdx (dedupe nearby indices).
@@ -151,7 +173,7 @@ foreach ($id in ($bestRel.Keys | Sort-Object)) {
   }
 
   $tunFrac = [math]::Round((($path | Where-Object { $_.tunnel }).Count) / $path.Count, 2)
-  Write-Host ("  line {0}: {1} vertices, tunnel fraction {2}, {3} stations" -f $id, $path.Count, $tunFrac, $stationIdx.Count)
+  Write-Host ("  line {0}: {1} vertices, tunnel fraction {2}, {3} stations, {4} member ways dropped (unconnected)" -f $id, $path.Count, $tunFrac, $stationIdx.Count, $dropped)
 }
 
 $linesJson = "[" + ($railLines -join ",") + "]"
