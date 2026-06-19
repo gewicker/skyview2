@@ -12,7 +12,7 @@
 // Degrades silently: no key on the server ⇒ empty list ⇒ the layer falls back to the timetable sim.
 
 import { RAIL_LINES } from "./rail";
-import { project, posAt, lineLength, paceVel, type RailLine } from "./path";
+import { project, posAt, lineLength, type RailLine } from "./path";
 
 interface RailTrainMsg { id: string; line: string; lat: number; lon: number; devSec: number; updated: number; }
 
@@ -29,8 +29,9 @@ interface Veh {
   s: number;                    // arc-length position (m)
   sTarget: number;              // arc-length of the last accepted on-line fix
   dir: 1 | -1;                  // travel direction along the path (+1 toward the high-index terminus)
+  sVel: number;                 // estimated speed (m/s) from consecutive fixes — drives prediction
   hasFix: boolean;              // got >=1 accepted on-line fix
-  lastFixS: number;             // previous accepted fix s (for direction)
+  lastFixS: number;             // previous accepted fix s (for speed/direction)
   lastFixAt: number;            // local ms of the last accepted on-line fix
 }
 
@@ -50,9 +51,10 @@ const STALE_S = 90;        // begin fading (above ground only)
 const DROP_S = 150;        // remove (above ground only)
 const DROP_MAX_S = 600;    // hard cap so a tunnel-silent train can't ghost forever
 const GATE_M = 60;         // a fix farther than this off the line is spurious — ignore for position
-const FIX_STALE_MS = 25000; // no accepted fix for longer than this → dead-reckon (tunnel/missed poll)
+const FIX_CORR = 0.5;      // per-poll gentle correction of s toward the projected fix
 const TAIL_M = 130;        // comet-tail length walked back along the path
 const DIR_EPS = 8;         // m of s change needed to (re)set travel direction
+const SPD_MAX = 35;        // m/s cap on the estimated speed (~125 km/h)
 
 const LINE_BY_ID = new Map<string, RailLine>(RAIL_LINES.map((l) => [l.id, l]));
 
@@ -78,7 +80,7 @@ export function startLiveTrains(): void {
             v = {
               line: m.line, lat: m.lat, lon: m.lon, alat: m.lat, alon: m.lon,
               tLat: m.lat, tLon: m.lon, devSec: m.devSec, lastSeen: now,
-              ln: LINE_BY_ID.get(m.line) ?? null, s: 0, sTarget: 0, dir: 1,
+              ln: LINE_BY_ID.get(m.line) ?? null, s: 0, sTarget: 0, dir: 1, sVel: 0,
               hasFix: false, lastFixS: 0, lastFixAt: 0,
             };
             vehicles.set(m.id, v);
@@ -91,7 +93,18 @@ export function startLiveTrains(): void {
             const pr = project(v.ln, m.lat, m.lon);
             if (pr.dist < GATE_M) {
               if (!v.hasFix) { v.s = pr.s; v.hasFix = true; }
-              else if (Math.abs(pr.s - v.lastFixS) > DIR_EPS) v.dir = pr.s >= v.lastFixS ? 1 : -1;
+              else {
+                // Estimate speed + direction from the move since the last accepted fix; then gently
+                // correct the predicted position onto the fix. Prediction (tick) does the smoothing.
+                const dtFix = (now - v.lastFixAt) / 1000;
+                if (dtFix > 0.5) {
+                  const ds = pr.s - v.lastFixS;
+                  if (Math.abs(ds) > DIR_EPS) v.dir = ds >= 0 ? 1 : -1;
+                  const est = Math.min(SPD_MAX, Math.abs(ds) / dtFix);
+                  v.sVel = v.sVel > 0 ? v.sVel + (est - v.sVel) * 0.5 : est; // smoothed
+                }
+                v.s += (pr.s - v.s) * FIX_CORR;
+              }
               v.sTarget = pr.s;
               v.lastFixS = pr.s;
               v.lastFixAt = now;
@@ -122,14 +135,12 @@ export function tickLiveTrains(dt: number): void {
     let submerged = false;
     if (v.ln && v.hasFix) {
       submerged = posAt(v.ln, v.s).tunnel;
-      const stale = now - v.lastFixAt > FIX_STALE_MS;
-      if (stale) {
-        const total = lineLength(v.ln);
-        v.s += v.dir * paceVel(v.ln, v.s) * Math.max(0, dt); // dead-reckon at schedule pace
-        if (v.s < 0) v.s = 0; else if (v.s > total) v.s = total;
-      } else {
-        v.s += (v.sTarget - v.s) * kp;                       // ease toward the latest fix
-      }
+      // Predict forward continuously at the estimated speed — smooth glide between the ~20 s polls,
+      // above ground AND in tunnels (where it carries the train at its last known speed). Each poll
+      // applies a gentle correction onto the latest fix.
+      const total = lineLength(v.ln);
+      v.s += v.dir * v.sVel * Math.max(0, dt);
+      if (v.s < 0) v.s = 0; else if (v.s > total) v.s = total;
     }
     // Drop: hard cap always; otherwise only when ABOVE ground (a tunnel-silent train is healthy).
     if (age > DROP_MAX_S * 1000 || (!submerged && age > DROP_S * 1000)) vehicles.delete(id);
