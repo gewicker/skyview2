@@ -205,7 +205,9 @@ export class AircraftLayer implements Layer {
       }
       // Landing light: on final to a PREDICTED runway, the nose light comes on — a warm forward
       // beam that brightens as it nears the predicted touchdown (day + night, brighter at night).
-      if (!ground && this.lightsOn && arrivingLocal(a)) {
+      // Gated to close/featured traffic (strobeMode > 0) so the beam is a near-home detail, not a
+      // beam on every arrival across the whole map (design audit v5).
+      if (!ground && this.lightsOn && strobeMode > 0 && arrivingLocal(a)) {
         const altF = a.altBaro ?? 3000;
         const close = Math.max(0.3, Math.min(1, 1 - (altF - 200) / 2800)); // brighter lower/closer
         const flick = 0.9 + 0.1 * Math.sin(f.t * 26 + seedFor(a.hex));

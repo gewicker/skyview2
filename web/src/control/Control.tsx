@@ -132,7 +132,6 @@ export default function Control({ config: c, surface, onChange, onPush, onReset,
             ambientMode: true, labelDensity: "adaptive", nearestN: 6,
             showMarineLayer: true, marineLayerIntensity: 0.55,
             showRadar: true, radarOpacity: 0.5,
-            showVessels: true, vesselIntensity: 0.6,
             showHighways: false, monitorMode: "night", lightsMode: "auto",
           })}>Apply</Btn>
         </ListRow>

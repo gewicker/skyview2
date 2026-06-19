@@ -10,14 +10,16 @@ interface FireMsg { id: string; type: string; address: string; lat: number; lon:
 
 export interface Incident {
   id: string; type: string; address: string; lat: number; lon: number;
-  time: number;       // dispatch time (ms) — drives "X min ago" + age fade
-  firstSeen: number;  // local ms we first rendered it — drives the one-time arrival ripple
+  time: number;       // dispatch time (ms) — drives "X min ago"
+  firstSeen: number;  // local ms we first saw it — lifetime + arrival ripple are measured from here
   cat: IncidentCat;
+  cue: boolean;       // play the one-time arrival ripple? false for the initial backlog load
 }
 
-export const LIFETIME_MIN = 45;  // drop an incident this long after its dispatch time
+export const LIFETIME_MIN = 45;  // drop an incident this long after we first see it
 
 let started = false;
+let firstPollDone = false; // the first poll is a backlog (incidents already minutes old) — no ripples
 const incidents = new Map<string, Incident>();
 
 /** Map a dispatch `type` to a severity category (ordered checks, first match wins). */
@@ -43,12 +45,20 @@ export function startLiveFire(): void {
         const now = Date.now();
         for (const m of j.incidents as FireMsg[]) {
           if (!m.id || (m.lat === 0 && m.lon === 0)) continue;
-          if (incidents.has(m.id)) continue; // first-seen timestamp is sticky
+          const ex = incidents.get(m.id);
+          if (ex) {
+            // Re-report: let the dispatch TYPE escalate (e.g. aid call → structure fire) but keep the
+            // sticky firstSeen. Severity can rise; firstSeen/lifetime don't reset.
+            if (m.type && m.type !== ex.type) { ex.type = m.type; ex.cat = classifyIncident(m.type); }
+            continue;
+          }
           incidents.set(m.id, {
             id: m.id, type: m.type, address: m.address, lat: m.lat, lon: m.lon,
             time: m.time, firstSeen: now, cat: classifyIncident(m.type),
+            cue: firstPollDone, // genuinely new (post-startup) incidents ripple; the backlog doesn't
           });
         }
+        firstPollDone = true;
       })
       .catch(() => {});
   };

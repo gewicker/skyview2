@@ -150,10 +150,6 @@ type Config struct {
 	ShowHighways     bool    `json:"showHighways"`
 	HighwayIntensity float64 `json:"highwayIntensity"`
 
-	// Synthetic marine-vessel traffic (Puget Sound shipping/ferry lanes) — off by default.
-	ShowVessels    bool    `json:"showVessels"`
-	VesselIntensity float64 `json:"vesselIntensity"`
-
 	// Link light rail: line + stations (GPS/OSM geometry) plus trains — live positions from
 	// the OBA feed when available, else timetable-simulated. One toggle covers all three.
 	ShowRail bool `json:"showRail"`
@@ -225,7 +221,6 @@ func Default() Config {
 		AmbientMode:          true,
 		RadarOpacity:         0.4, // kept a whisper under the cool traffic so precip isn't a 3rd stacked blue
 		HighwayIntensity:     0.6,
-		VesselIntensity:      0.7,
 		MonitorMode:          "lightsout", LightsOutHour: 23, LightsOutBrightness: 0.47, ShowCursor: false,
 	}
 }

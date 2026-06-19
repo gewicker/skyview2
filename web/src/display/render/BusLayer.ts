@@ -9,7 +9,7 @@ import { startLiveBuses, tickLiveBuses, liveBuses } from "./livebuses";
 import { coreDim } from "./night";
 
 const BUS = "150,130,235"; // periwinkle violet
-const CAP = 70;            // max beads drawn per frame (nearest home wins)
+const CAP = 50;            // max beads drawn per frame (nearest home wins) — trimmed for calm (design audit v5)
 
 export class BusLayer implements Layer {
   readonly name = "buses";

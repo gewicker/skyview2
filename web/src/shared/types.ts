@@ -45,7 +45,6 @@ export interface Config {
   ambientMode: boolean; // non-aircraft layers stay label-free (ferries + tapped excepted)
   showRadar: boolean; radarOpacity: number; // keyless precip radar
   showHighways: boolean; highwayIntensity: number; // synthetic road traffic
-  showVessels: boolean; vesselIntensity: number; // synthetic Sound vessel traffic
   showRail: boolean; // Link light rail line + stations (static, GPS/OSM)
   showBuses: boolean; // live Metro + Sound Transit buses (OBA) within the home radius
   showFerries: boolean; // live WA State Ferries (WSF) on the Sound

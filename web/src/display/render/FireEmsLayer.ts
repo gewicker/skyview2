@@ -97,9 +97,10 @@ export class FireEmsLayer implements Layer {
       // PRIMARY READ: the category SYMBOL on top of the dot (shape carries meaning; hue reinforces).
       drawSymbol(ctx, p.x, p.y, inc.cat, c.rgb, c.sym, Math.min(0.98, c.ring * dim + 0.14), vis);
 
-      // One-time arrival ripple — a single raindrop, day only, and only for a genuinely FRESH
-      // dispatch (so the initial load of a backlog of old-but-just-fetched incidents doesn't ripple).
-      if (f.cfg.fireEmsArrivalCue && !muted && (now - inc.time) / 60000 < 8) {
+      // One-time arrival ripple — a single raindrop, day only, for incidents that arrived AFTER the
+      // initial backlog load (inc.cue). Tied to firstSeen, not dispatch time (the feed lags 30-60 min,
+      // so a dispatch-age gate would never fire).
+      if (f.cfg.fireEmsArrivalCue && !muted && inc.cue) {
         const since = (now - inc.firstSeen) / 1000;
         if (since >= 0 && since < ARRIVAL_CUE_S) {
           const u = since / ARRIVAL_CUE_S;
