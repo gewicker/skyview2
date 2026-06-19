@@ -205,6 +205,15 @@ pattern, rail geometry last among the core work because OSM stitching is the fid
   `internal/feed/buses.go` (currently parsed then dropped) → `/api/buses` → livebuses → the bus
   TransitPick, then resolve route/headsign (OBA trip details or carry headsign in the feed).
 
+## Backlog — all-up optimization pass (TAIL OF RELEASE, George 2026-06-18)
+Lag is mostly addressed (gesture loop cap + rail bake + decimation + mid-gesture skips). Do a
+consolidated optimization pass at the end of this release, drawing the remaining items from
+`docs/PERF-INTERACT.md` + `docs/OPTIMIZATION-AUDIT.md`: code-split `rail.ts` (214KB) + `highways.ts`
+(127KB) behind dynamic `import()` (first-paint/memory); bake the highway flow offscreen the way rail
+now is (only when highways toggled on); cache `liveTrains()` once per frame (RailLayer + TrainLayer
+both walk it); skip transit tail/wake `createLinearGradient` churn mid-gesture; and profile basemap
+tile raster / overall fill-rate if anything remains. Bundle is ~890KB — code-split is the headline.
+
 ## Cross-cutting reminders (from memory / handoff)
 - **Compile gate is the Pi** (`make pi`); the Cowork bash mount is stale on edits and can't build
   Go — trust the Read tool + the Pi gate, not bash greps of the mount.
