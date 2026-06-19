@@ -14,7 +14,7 @@
 // waterTaxi) so BusLayer needs no structural change. Velocity is capped + decays when the feed goes
 // quiet (a dropped bus coasts to a stop). Carries route/headsign for the tap card.
 
-import { project, posAt, lineLength, type RailLine, type RailVertex } from "./path";
+import { project, posAt, lineLength, cumLen, type RailLine, type RailVertex } from "./path";
 
 interface BusMsg { id: string; lat: number; lon: number; updated: number; route?: string; headsign?: string; shape?: string; waterTaxi?: boolean; }
 
@@ -221,10 +221,35 @@ export function liveBuses(): LiveBus[] {
 }
 
 /** The decoded route polyline (lat/lon points) for a tapped bus's CURRENT trip shape, or null when
- *  it has no usable shape (velocity-fallback buses, or a shape that hasn't arrived in a poll yet).
- *  Drives BusRouteLayer's on-tap route reveal — the bus-equivalent of FerryRouteLayer. */
+ *  it has no usable shape (velocity-fallback buses, or a shape that hasn't arrived in a poll yet). */
 export function busShapePath(id: string): { lat: number; lon: number }[] | null {
   const v = vehicles.get(id);
   if (!v || !v.ln || v.ln.path.length < 2) return null;
   return v.ln.path.map((p) => ({ lat: p.lat, lon: p.lon }));
+}
+
+/** The road AHEAD for a tapped bus: the slice of its trip shape from the bus's current arc-length
+ *  position to the destination terminus (in the travel direction), starting at the exact bus point.
+ *  This is what BusRouteLayer draws — the bus-space twin of the aircraft destination great-circle
+ *  (see docs/BUS-ROUTE-DESIGN.md). Also returns the estimated speed `sVel` (m/s) so the layer can
+ *  pace its directional dash flow. null when the bus has no road-snapped arc position (velocity
+ *  fallback) — those buses simply get no route line. */
+export function busAhead(id: string): { pts: { lat: number; lon: number }[]; sVel: number } | null {
+  const v = vehicles.get(id);
+  if (!v || !v.ln || !v.hasArc || v.ln.path.length < 2) return null;
+  const cum = cumLen(v.ln);
+  const head = posAt(v.ln, v.s);
+  const pts: { lat: number; lon: number }[] = [{ lat: head.lat, lon: head.lon }];
+  // Walk the shape vertices that lie ahead of the bus in the travel direction, ending at the terminus.
+  if (v.dir >= 0) {
+    for (let i = 0; i < v.ln.path.length; i++) {
+      if (cum[i] > v.s) pts.push({ lat: v.ln.path[i].lat, lon: v.ln.path[i].lon });
+    }
+  } else {
+    for (let i = v.ln.path.length - 1; i >= 0; i--) {
+      if (cum[i] < v.s) pts.push({ lat: v.ln.path[i].lat, lon: v.ln.path[i].lon });
+    }
+  }
+  if (pts.length < 2) return null;
+  return { pts, sVel: v.sVel };
 }
