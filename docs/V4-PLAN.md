@@ -196,6 +196,15 @@ pattern, rail geometry last among the core work because OSM stitching is the fid
   train's speed from consecutive fixes and predicts forward continuously (no ease-and-stall between
   ~20s polls), above ground and through tunnels; gentle per-poll correction onto the fix.
 
+- **Color P1/P2 — DONE 2026-06-18.** 1 Line bead brightened to [70,180,110] (out-reads the jade
+  track); near-white transit cores (train window/shimmer/core, bus core, ferry deckhouse, station
+  core) now night-dim via shared `night.ts` (`coreDim()`, fed by AircraftLayer's nf); station halo
+  floor lifted 0.18→0.22.
+- **Enhance transit cards with bus/vehicle details if available (George 2026-06-18).** Show bus
+  route/headsign (and any vehicle detail) in the TransitCard. Needs `tripId` plumbed through
+  `internal/feed/buses.go` (currently parsed then dropped) → `/api/buses` → livebuses → the bus
+  TransitPick, then resolve route/headsign (OBA trip details or carry headsign in the feed).
+
 ## Cross-cutting reminders (from memory / handoff)
 - **Compile gate is the Pi** (`make pi`); the Cowork bash mount is stale on edits and can't build
   Go — trust the Read tool + the Pi gate, not bash greps of the mount.

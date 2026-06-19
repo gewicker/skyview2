@@ -6,6 +6,7 @@
 // stays calm instead of becoming a swarm.
 import type { Layer, FrameContext } from "./types";
 import { startLiveBuses, tickLiveBuses, liveBuses } from "./livebuses";
+import { coreDim } from "./night";
 
 const BUS = "150,130,235"; // periwinkle violet
 const CAP = 70;            // max beads drawn per frame (nearest home wins)
@@ -65,7 +66,7 @@ export class BusLayer implements Layer {
       ctx.fillRect(-2.2, -1.5, 4.4, 3.0);
       ctx.beginPath();
       ctx.arc(1.3, 0, 1.0, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(238,234,255,${0.95 * a})`;
+      ctx.fillStyle = `rgba(238,234,255,${(0.95 * a * coreDim()).toFixed(3)})`;
       ctx.fill();
       ctx.restore();
     }

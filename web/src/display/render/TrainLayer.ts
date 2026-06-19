@@ -11,10 +11,11 @@
 import type { Layer, FrameContext } from "./types";
 import { simTrains, nowMinLocal } from "./trains";
 import { startLiveTrains, tickLiveTrains, liveTrains, liveLineSet } from "./livetrains";
+import { coreDim } from "./night";
 
 // Official Link line colors (match the OBA route colors + the rider mental model).
 const LINE_RGB: Record<string, [number, number, number]> = {
-  "1": [40, 129, 63],  // 1 Line green (28813F)
+  "1": [70, 180, 110], // 1 Line green — brightened from official 28813F so the live bead out-reads its jade track
   "2": [0, 124, 173],  // 2 Line blue  (007CAD)
 };
 
@@ -75,6 +76,7 @@ export class TrainLayer implements Layer {
 
     ctx.save();
     ctx.lineCap = "round";
+    const cm = coreDim(); // night-aware dim for the near-white "presence" cores
 
     // --- LIVE trains: solid, full-saturation beads with a measured core ----------------- //
     const live = liveTrains();
@@ -132,13 +134,13 @@ export class TrainLayer implements Layer {
         ctx.fillStyle = `rgba(${base},${0.95 * a})`;
         ctx.fill();
         // lit window band (the measured core, stretched along the car)
-        ctx.fillStyle = `rgba(232,246,255,${0.9 * a})`;
+        ctx.fillStyle = `rgba(232,246,255,${(0.9 * a * cm).toFixed(3)})`;
         ctx.fillRect(-hx, -0.9, hx * 2, 1.8);
         // along-track shimmer gliding nose→tail
         const frac = (f.t * 0.5 + seedNum(t.id)) % 1;
         ctx.beginPath();
         ctx.arc(-hx + 2 * hx * frac, 0, 1.5, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255,255,255,${0.5 * a})`;
+        ctx.fillStyle = `rgba(255,255,255,${(0.5 * a * cm).toFixed(3)})`;
         ctx.fill();
         ctx.restore();
       } else {
@@ -148,7 +150,7 @@ export class TrainLayer implements Layer {
         ctx.fill();
         ctx.beginPath();
         ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(232,246,255,${0.98 * a})`;
+        ctx.fillStyle = `rgba(232,246,255,${(0.98 * a * cm).toFixed(3)})`;
         ctx.fill();
       }
     }

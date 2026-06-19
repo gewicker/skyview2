@@ -4,6 +4,7 @@
 // aircraft cyan/amber, and the gold home beacon. Label-free until tapped.
 import type { Layer, FrameContext } from "./types";
 import { startLiveFerries, tickLiveFerries, liveFerries, ferryTerminals } from "./liveferries";
+import { coreDim } from "./night";
 
 const HULL = "150,205,242";     // steel-cyan, nudged cooler+lighter off the teal water
 const HULL_EDGE = "8,14,22";    // dark keyline so the boat separates from water by an edge, not hue alone
@@ -103,10 +104,10 @@ export class FerryLayer implements Layer {
       ctx.lineWidth = 1;
       ctx.stroke();
 
-      // bright deckhouse core — the "there's a boat here" point
+      // bright deckhouse core — the "there's a boat here" point (night-dimmed with the room)
       ctx.beginPath();
       ctx.arc(-0.5, 0, 2.2, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(238,246,252,${0.99 * a})`;
+      ctx.fillStyle = `rgba(238,246,252,${(0.99 * a * coreDim()).toFixed(3)})`;
       ctx.fill();
       ctx.restore();
     }

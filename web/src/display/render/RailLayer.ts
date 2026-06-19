@@ -6,6 +6,7 @@
 import type { Layer, FrameContext } from "./types";
 import { RAIL_SEGMENTS, RAIL_STATIONS, RAIL_LINES } from "./rail";
 import { liveTrains } from "./livetrains";
+import { coreDim } from "./night";
 
 // Underground spans of each line (runs of consecutive tunnel segments), as [lat,lon] polylines —
 // drawn as a recessed dashed hairline beneath the surface ribbon so the eye reads "the track
@@ -32,7 +33,6 @@ const LINE = "rgba(40,225,170,";             // bright transit JADE (alpha appen
                                              // ~15k-ft altitude meadow-green trails, so it reads from a room away
 const LINE_HAIR = "rgba(150,240,200,0.9)";   // bright coaxial centerline — reads as lit infrastructure
 const STATION_RING = "rgba(40,225,170,0.95)"; // jade outline
-const STATION_CORE = "rgba(232,255,244,0.98)"; // bright near-white core so stations read as landmarks
 
 interface Pt { x: number; y: number }
 
@@ -117,16 +117,16 @@ export class RailLayer implements Layer {
       }
       ctx.beginPath();                                 // halo bloom (swells with nearby train)
       ctx.arc(p.x, p.y, 7 * sr * (1 + 0.6 * prox), 0, Math.PI * 2);
-      ctx.fillStyle = LINE + (0.18 + 0.27 * prox).toFixed(3) + ")";
+      ctx.fillStyle = LINE + (0.22 + 0.25 * prox).toFixed(3) + ")"; // lifted floor so it doesn't smudge over water
       ctx.fill();
       ctx.beginPath();                                 // stroked ring = a deliberate "stop" marker
       ctx.arc(p.x, p.y, 5 * sr, 0, Math.PI * 2);
       ctx.lineWidth = 1.6;
       ctx.strokeStyle = STATION_RING;
       ctx.stroke();
-      ctx.beginPath();                                 // bright core landmark
+      ctx.beginPath();                                 // bright core landmark (night-dimmed with the room)
       ctx.arc(p.x, p.y, 2.4 * sr, 0, Math.PI * 2);
-      ctx.fillStyle = STATION_CORE;
+      ctx.fillStyle = `rgba(232,255,244,${(0.98 * coreDim()).toFixed(3)})`;
       ctx.fill();
     }
     // Arrival rings: a single slow expanding ring as a train reaches a station — a quiet "bell of

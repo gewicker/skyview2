@@ -12,6 +12,7 @@ import { AIRPORTS } from "./airports";
 import { SEAPLANE_BASES } from "./seaplane";
 import { arrivalField } from "./ApproachLayer";
 import { sunAltitude } from "./sun";
+import { setNightF } from "./night";
 
 // Time-of-day night factor (0 in daylight → 1 at full night), smooth through twilight.
 // Aircraft + runway lights scale to this so they fade in at dusk like the real thing.
@@ -126,6 +127,7 @@ export class AircraftLayer implements Layer {
     const lmode = f.cfg.lightsMode || "auto";
     this.lightsOn = lmode !== "off";
     this.nf = lmode === "on" ? 1 : lmode === "off" ? 0 : this.autoNf;
+    setNightF(this.nf); // publish for the transit layers' night-aware core dimming
     // Airborne aircraft read at the configured size; ground traffic is drawn as crisp little
     // chevrons/dots (see drawGroundMarker) so a busy ramp reads as distinct aircraft.
     // ZOOM COUPLING: glyphs are a fixed pixel size, so when you zoom in on a single aircraft
