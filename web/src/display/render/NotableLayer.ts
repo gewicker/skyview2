@@ -90,7 +90,7 @@ export class NotableLayer implements Layer {
 
 // --- emblems (stylised, ~16px) ------------------------------------------------- //
 function drawEmblem(ctx: CanvasRenderingContext2D, x: number, y: number, kind: Emblem, t: number): void {
-  const pulse = 0.7 + 0.3 * Math.sin(t * 5);
+  const pulse = 0.78 + 0.22 * Math.sin(t * 1.3); // ~0.2 Hz house breath (was t*5 ≈ 0.8 Hz, off-rhythm)
   ctx.save();
   ctx.translate(x, y);
   switch (kind) {

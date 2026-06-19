@@ -57,10 +57,17 @@ export class BusRouteLayer implements Layer {
     // at the bus's live speed (px/s ∝ sVel, capped). Stopped bus → still dashes (the congestion cue).
     const pxPerSec = Math.min(40, Math.max(0, ahead.sVel) * 1.6);
     if (!f.interacting) this.phase = (this.phase + pxPerSec * Math.max(0, f.dt)) % DASH;
-    const grad = ctx.createLinearGradient(a.x, a.y, z.x, z.y);
-    grad.addColorStop(0, `rgba(${col},0.7)`);
-    grad.addColorStop(1, `rgba(${col},0.22)`);
-    ctx.strokeStyle = grad;
+    // Gradient bright-at-bus → dim-at-destination. When the endpoints coincide on screen (bus at its
+    // terminus, or sub-pixel when zoomed way out) a zero-length gradient renders as the LAST stop
+    // (dim) — so fall back to a flat bright stroke instead (bug scrub v6 P2-1).
+    if (Math.hypot(z.x - a.x, z.y - a.y) < 1) {
+      ctx.strokeStyle = `rgba(${col},0.7)`;
+    } else {
+      const grad = ctx.createLinearGradient(a.x, a.y, z.x, z.y);
+      grad.addColorStop(0, `rgba(${col},0.7)`);
+      grad.addColorStop(1, `rgba(${col},0.22)`);
+      ctx.strokeStyle = grad;
+    }
     ctx.lineWidth = 2.5;
     ctx.setLineDash([10, 10]);
     ctx.lineDashOffset = -this.phase; // negative → dashes travel bus → destination

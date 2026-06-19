@@ -41,6 +41,7 @@ export class Renderer {
   private lastCam: Camera | null = null;
   private override: View | null = null;     // transient view during pan/zoom
   private selectedHex = "";
+  private featuredHex = "";                   // spotlight's auto-featured hex (published by the layer)
   private selectedNav = "";                  // tapped navaid/fix/final id
   private lastVisible: Visible[] = [];       // visible set from the last draw (reused by hit-tests)
   private spotDismissAt = 0;                  // last "dismiss overhead card" tap
@@ -149,6 +150,9 @@ export class Renderer {
   }
 
   select(hex: string | null): void { this.selectedHex = hex || ""; }
+  /** SpotlightLayer publishes its auto-featured hex here each frame; the next frame's FrameContext
+   *  carries it so AircraftLayer can promote that plane to the double-flash (one-frame lag, fine). */
+  publishFeatured(hex: string | null): void { this.featuredHex = hex || ""; }
   selectNav(id: string | null): void { this.selectedNav = id || ""; }
   /** Tell the renderer whether a DOM detail card is currently open, so the spotlight
    *  layer can suppress its canvas placard and never paint over it. */
@@ -253,7 +257,9 @@ export class Renderer {
     // (kiosk patches round-trip over WS; web is a React re-render). Clearing on a blind timer
     // let the map snap back to the pre-commit view for a frame — the "rubberband".
     if (this.override && viewMatches(this.override, cfg)) this.override = null;
-    const dt = this.prev ? (now - this.prev) / 1000 : 0.016;
+    // Clamp dt so a backgrounded-then-refocused tab (huge elapsed time) can't lurch dead-reckoned
+    // vehicles a large arc or jump the dash flow on the first frame back (bug scrub v6 P2-4).
+    const dt = Math.min(this.prev ? (now - this.prev) / 1000 : 0.016, 0.1);
     this.prev = now;
     if (this.canvas.clientWidth !== this.w || this.canvas.clientHeight !== this.h) this.resize();
 
@@ -283,6 +289,7 @@ export class Renderer {
     const f = {
       ctx, cam, cfg, t: now / 1000, dt, w: this.w, h: this.h, dpr: this.dpr,
       aircraft: visible, view: v, selectedHex: this.selectedHex || undefined,
+      featuredHex: this.featuredHex || undefined,
       selectedNavId: this.selectedNav || undefined,
       spotDismissAt: this.spotDismissAt || undefined, interacting,
       cardOpen: this.cardOpen || undefined,

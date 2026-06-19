@@ -43,6 +43,7 @@ export function startLiveFerries(): void {
   if (started) return;
   started = true;
   const poll = () => {
+    if (typeof document !== "undefined" && document.hidden) return; // don't fetch on a hidden tab
     fetch("/api/ferries")
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {

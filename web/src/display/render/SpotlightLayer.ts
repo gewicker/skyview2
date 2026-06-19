@@ -23,6 +23,10 @@ export class SpotlightLayer implements Layer {
   private sunAlt = 45;
   private golden = 0; // 0..1, peaks as the sun crosses the horizon
 
+  // onFeature publishes the auto-featured hex (or "" when none) so the renderer can hand it to
+  // AircraftLayer next frame (the double-flash + landing beam earn the spotlight, not just a tap).
+  constructor(private onFeature?: (hex: string) => void) {}
+
   // Recompute the golden-hour factor every ~20 s (sun moves slowly).
   private updateGolden(f: FrameContext): void {
     const wall = Date.now();
@@ -61,6 +65,9 @@ export class SpotlightLayer implements Layer {
         // "Locked target" indicator: two slowly-rotating cyan gimbal arcs + fixed gold notches
         // at top/bottom — reads unmistakably as a tracked/selected object, not as clutter.
         gimbalRing(f.ctx, p.x, p.y, f.t, [57, 194, 216], [255, 184, 92]);
+        // A manual selection owns the focus (AircraftLayer promotes selectedHex); the auto-feature
+        // yields, so publish no featured hex this frame.
+        this.onFeature?.("");
         // The rich tap card (DOM) owns the details for a tapped aircraft; we only ring it here.
         return;
       }
@@ -68,7 +75,7 @@ export class SpotlightLayer implements Layer {
 
     // During golden hour, auto-feature even if the spotlight is otherwise off — it's
     // the prettiest light to catch an aircraft in.
-    if (!f.cfg.showSpotlight && this.golden < 0.15) return;
+    if (!f.cfg.showSpotlight && this.golden < 0.15) { this.onFeature?.(""); return; }
     const now = f.t * 1000;
 
     // Nearest within radius. Hot loop over every aircraft each frame, so use a cheap flat
@@ -95,6 +102,7 @@ export class SpotlightLayer implements Layer {
       target = null;
       this.hex = "";
     }
+    this.onFeature?.(this.hex); // publish the auto-featured hex (or "") for next frame's strobe gate
     if (!target) return;
 
     const ctx = f.ctx;

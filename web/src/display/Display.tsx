@@ -48,6 +48,7 @@ const SEA_AP = AIRPORTS.find((a) => a.iata === "SEA");
 const SEA_C = SEA_AP
   ? (() => { let la = 0, lo = 0, n = 0; for (const rw of SEA_AP.runways) { la += rw.le[0] + rw.he[0]; lo += rw.le[1] + rw.he[1]; n += 2; } return { lat: la / n, lon: lo / n }; })()
   : null;
+const FIELD_ENTRY_ZOOM = 3; // touch: only surface the doorway once the map is zoomed in on the field
 
 export default function Display() {
   const { state, conn } = useStream("display");
@@ -120,6 +121,7 @@ export default function Display() {
   const drag = useRef<{ lx: number; ly: number; sx: number; sy: number; moved: boolean; t: number } | null>(null);
   const pinch = useRef(0);
   const wheelTimer = useRef(0);
+  const entryHideTimer = useRef(0); // debounce hiding the airport doorway so the cursor can reach it
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -152,7 +154,7 @@ export default function Display() {
     r.use(new RouteLayer());   // dashed great-circle to destination for the selected aircraft
     r.use(new LeaderLayer());
     r.use(new AircraftLayer());
-    r.use(new SpotlightLayer());
+    r.use(new SpotlightLayer((hex) => r.publishFeatured(hex))); // feed the auto-featured hex back for the strobe gate
     r.use(new NotableLayer());
     r.use(new HoldingLayer());
     r.use(new WindsLayer());
@@ -182,8 +184,19 @@ export default function Display() {
   useEffect(() => {
     if (!transit) return;
     const r = rendererRef.current;
-    if (r && !r.onScreenTransit(transit)) { r.selectFerry(null); r.selectBus(null); setTransit(null); }
-  }, [state.now, transit]);
+    if (!r) return;
+    // Also despawn if the tapped element's FEED was toggled off after the card opened: that layer
+    // stops ticking, so onScreenTransit would keep finding the now-frozen, no-longer-rendered
+    // element and the card would linger over empty map (bug scrub v6 P1-2).
+    const c = cfgRef.current;
+    const feedOff = !!c && (
+      transit.kind === "train" || transit.kind === "station" ? !c.showRail
+        : transit.kind === "bus" ? !c.showBuses
+        : transit.kind === "ferry" ? !c.showFerries
+        : transit.kind === "fire" ? !c.showFireEms
+        : false);
+    if (feedOff || !r.onScreenTransit(transit)) { r.selectFerry(null); r.selectBus(null); setTransit(null); }
+  }, [state.now, transit, effective?.showRail, effective?.showBuses, effective?.showFerries, effective?.showFireEms]);
 
   // Touch clients (no hover): surface the airport-view entry over KSEA when the field is on-screen
   // AND the map is zoomed in on it. Never on the kiosk (the Pi never runs the airport view). Desktop
@@ -195,7 +208,7 @@ export default function Display() {
       if (!r || !cv) return;
       const s = r.projectLL(SEA_C.lat, SEA_C.lon);
       const onScreen = !!s && s.x > 24 && s.x < cv.clientWidth - 24 && s.y > 24 && s.y < cv.clientHeight - 24;
-      const zoomed = (r.getView().mapZoom || 1) >= 3;
+      const zoomed = (r.getView().mapZoom || 1) >= FIELD_ENTRY_ZOOM;
       setAirportEntry(s && onScreen && zoomed ? { x: s.x, y: s.y } : null);
     }, 333);
     return () => clearInterval(id);
@@ -263,6 +276,7 @@ export default function Display() {
 
   const onDown = (e: RPointerEvent) => {
     pokeUi();
+    clearTimeout(entryHideTimer.current);
     setAirportEntry(null); // hide the entry door while interacting; it re-reveals on hover/idle
     canvasRef.current!.setPointerCapture(e.pointerId);
     const p = rel(e);
@@ -281,7 +295,9 @@ export default function Display() {
     if (canHover && !isKiosk && SEA_C && !drag.current && ptrs.current.size === 0) {
       const p = rel(e);
       const s = rendererRef.current?.projectLL(SEA_C.lat, SEA_C.lon);
-      setAirportEntry(s && Math.hypot(s.x - p.x, s.y - p.y) < 42 ? { x: s.x, y: s.y } : null);
+      const near = !!s && Math.hypot(s.x - p.x, s.y - p.y) < 42;
+      if (near) { clearTimeout(entryHideTimer.current); setAirportEntry({ x: s!.x, y: s!.y }); }
+      else setAirportEntry(null);
     }
     if (!ptrs.current.has(e.pointerId)) return;
     const p = rel(e);
@@ -378,7 +394,7 @@ export default function Display() {
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onUp}
-        onPointerLeave={() => { if (canHover) setAirportEntry(null); }}
+        onPointerLeave={() => { if (canHover) { clearTimeout(entryHideTimer.current); entryHideTimer.current = window.setTimeout(() => setAirportEntry(null), 160); } }}
         onWheel={onWheel}
       />
       {!state.config && (
@@ -398,6 +414,8 @@ export default function Display() {
       {airportEntry && !isKiosk && (
         <button
           onClick={(e) => { e.stopPropagation(); window.open("/airport", "_blank", "noopener,noreferrer"); }}
+          onMouseEnter={() => clearTimeout(entryHideTimer.current)}
+          onMouseLeave={() => { entryHideTimer.current = window.setTimeout(() => setAirportEntry(null), 160); }}
           title="Open the KSEA airport view (opens in a new tab)"
           style={{
             position: "absolute", left: airportEntry.x, top: Math.max(8, airportEntry.y - 40),

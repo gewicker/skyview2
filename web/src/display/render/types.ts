@@ -42,6 +42,9 @@ export interface FrameContext {
   view: { mapCenterLat: number; mapCenterLon: number; mapZoom: number };
   /** Manually selected aircraft (tap), if any — the spotlight pins to it. */
   selectedHex?: string;
+  /** The aircraft the spotlight is auto-featuring this frame (published by SpotlightLayer, read one
+   *  frame later). Promoted to the authentic strobe double-flash + landing beam like a manual tap. */
+  featuredHex?: string;
   /** Manually selected static feature (navaid/fix/final) id, if any — the navaid &
    *  procedure layers draw its highlight + detail card. */
   selectedNavId?: string;

@@ -7,6 +7,8 @@ let _nf = 0;
 export function setNightF(v: number): void { _nf = v; }
 export function nightF(): number { return _nf; }
 
-/** Multiplier for a near-white core alpha: full by day, ~0.5 at night so the transit "presence"
- *  cores settle into the dark room and never out-read a distant aircraft (design audit v5). */
-export function coreDim(): number { return 0.5 + 0.5 * (1 - _nf); }
+/** Multiplier for a near-white core alpha: full by day, ~0.45 at full night so the transit
+ *  "presence" cores settle into the dark room and never out-read a distant ambient aircraft — whose
+ *  strobe is gated off at range, leaving only its steady position lights to carry it (design audit
+ *  v5 #1 / design review v6: the floor was 0.5, which let a transit core out-read those lights). */
+export function coreDim(): number { return 0.45 + 0.55 * (1 - _nf); }

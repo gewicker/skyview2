@@ -67,6 +67,7 @@ export function startLiveTrains(): void {
   if (started) return;
   started = true;
   const poll = () => {
+    if (typeof document !== "undefined" && document.hidden) return; // don't fetch on a hidden tab
     fetch("/api/rail")
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {

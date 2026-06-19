@@ -38,6 +38,7 @@ export function startLiveFire(): void {
   if (started) return;
   started = true;
   const poll = () => {
+    if (typeof document !== "undefined" && document.hidden) return; // don't fetch on a hidden tab
     fetch("/api/fire")
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {

@@ -94,6 +94,7 @@ export function startLiveBuses(): void {
   if (started) return;
   started = true;
   const poll = () => {
+    if (typeof document !== "undefined" && document.hidden) return; // don't fetch on a hidden tab
     fetch("/api/buses")
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
@@ -236,18 +237,23 @@ export function busShapePath(id: string): { lat: number; lon: number }[] | null 
  *  fallback) — those buses simply get no route line. */
 export function busAhead(id: string): { pts: { lat: number; lon: number }[]; sVel: number } | null {
   const v = vehicles.get(id);
-  if (!v || !v.ln || !v.hasArc || v.ln.path.length < 2) return null;
+  // Require onLine too (not just hasArc): tick only advances v.s while on-line, so an off-route bus
+  // has a FROZEN v.s — drawing the ahead-slice from it would detach the line from the (velocity-
+  // fallback) bead. Mirror liveBuses' road-snap gate; the layer no-ops on null (bug scrub v6 P1-1).
+  if (!v || !v.ln || !v.hasArc || !v.onLine || v.ln.path.length < 2) return null;
   const cum = cumLen(v.ln);
   const head = posAt(v.ln, v.s);
   const pts: { lat: number; lon: number }[] = [{ lat: head.lat, lon: head.lon }];
-  // Walk the shape vertices that lie ahead of the bus in the travel direction, ending at the terminus.
+  // Walk the shape vertices ahead of the bus in the travel direction, ending at the terminus. The
+  // 1 m epsilon skips a vertex coincident with the head so the first segment isn't zero-length (P2-2).
+  const EPS = 1;
   if (v.dir >= 0) {
     for (let i = 0; i < v.ln.path.length; i++) {
-      if (cum[i] > v.s) pts.push({ lat: v.ln.path[i].lat, lon: v.ln.path[i].lon });
+      if (cum[i] > v.s + EPS) pts.push({ lat: v.ln.path[i].lat, lon: v.ln.path[i].lon });
     }
   } else {
     for (let i = v.ln.path.length - 1; i >= 0; i--) {
-      if (cum[i] < v.s) pts.push({ lat: v.ln.path[i].lat, lon: v.ln.path[i].lon });
+      if (cum[i] < v.s - EPS) pts.push({ lat: v.ln.path[i].lat, lon: v.ln.path[i].lon });
     }
   }
   if (pts.length < 2) return null;

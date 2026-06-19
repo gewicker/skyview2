@@ -174,7 +174,11 @@ export class AircraftLayer implements Layer {
       const sLon = f.cfg.spotlightLon ?? f.cfg.centerLon;
       const sRad = f.cfg.spotlightRadiusMi || 15;
       const sdx = (a.lon - sLon) * 69 * Math.cos(sLat * DEG), sdy = (a.lat - sLat) * 69;
-      const strobeMode = a.hex === f.selectedHex ? 2 : (sdx * sdx + sdy * sdy <= sRad * sRad ? 1 : 0);
+      // The auto-spotlighted plane (featuredHex, published by SpotlightLayer) earns the authentic
+      // double-flash too — not just a manual tap — so the signature flash is the ambient reward it
+      // was designed to be on a passive kiosk, while all other traffic stays calm.
+      const strobeMode = (a.hex === f.selectedHex || a.hex === f.featuredHex)
+        ? 2 : (sdx * sdx + sdy * sdy <= sRad * sRad ? 1 : 0);
 
       ctx.save();
       ctx.translate(p.x, p.y);
@@ -205,9 +209,10 @@ export class AircraftLayer implements Layer {
       }
       // Landing light: on final to a PREDICTED runway, the nose light comes on — a warm forward
       // beam that brightens as it nears the predicted touchdown (day + night, brighter at night).
-      // Gated to close/featured traffic (strobeMode > 0) so the beam is a near-home detail, not a
-      // beam on every arrival across the whole map (design audit v5).
-      if (!ground && this.lightsOn && strobeMode > 0 && arrivingLocal(a)) {
+      // Gated to the ONE featured/selected plane (strobeMode === 2) so an arrival bank into SEA is
+      // not a whole row of beams — it's the reward for the aircraft you're attending to (design
+      // audit v5 #2 / design review v6).
+      if (!ground && this.lightsOn && strobeMode === 2 && arrivingLocal(a)) {
         const altF = a.altBaro ?? 3000;
         const close = Math.max(0.3, Math.min(1, 1 - (altF - 200) / 2800)); // brighter lower/closer
         const flick = 0.9 + 0.1 * Math.sin(f.t * 26 + seedFor(a.hex));
@@ -719,16 +724,22 @@ function drawNavLights(ctx: CanvasRenderingContext2D, glyphS: number, a: LightAn
   const wx = a.wingX * glyphS, wy = a.wingY * glyphS;
   // Light dot radii SCALE with the glyph (was a constant 1.3px that vanished at small size and
   // never grew when zoomed in). lr ≈ a wingtip-lens size proportional to the airframe.
-  const lr = Math.max(1.1, glyphS * 0.12);
+  // Capped at 4.5px so a zoomed-in widebody's steady lamps can't grow LARGER than its 5px-capped
+  // strobe — the strobe must stay the hottest, biggest light on the airframe (design review v6).
+  const lr = Math.min(Math.max(1.1, glyphS * 0.12), 4.5);
   // Position lights (steady). Warm-red port / cool-green starboard read as a temperature pair
   // even at 1px; warm-white tail. Drawn over the map (source-over).
   lamp(ctx, -wx, wy, lr, `rgba(255,42,38,${(0.95 * lvl).toFixed(3)})`);             // port (red)
   lamp(ctx, wx, wy, lr, `rgba(40,235,90,${(0.95 * lvl).toFixed(3)})`);              // starboard (green)
   lamp(ctx, 0, a.tailY * glyphS, lr * 0.85, `rgba(255,247,235,${(0.85 * lvl).toFixed(3)})`); // tail (warm white)
   ctx.globalCompositeOperation = "lighter";
-  // Red beacon: a rotating lens crossing the line of sight — fast rise, slow fall, dark half.
-  const bp = (t * 0.85 + seed) % 1;
-  const b = bp < 0.55 ? Math.pow(Math.max(0, Math.sin(bp * Math.PI * 2)), 3) : 0;
+  // Red beacon: a rotating lens crossing the line of sight — fast rise, slow fall, dark half. Phase
+  // AND period are decorrelated from the white strobe (independent systems / different timers on a
+  // real airframe) and it runs at a true ~40 flashes/min, so the two lights beat against each other
+  // the way real ones do (design review v6). The featured plane gets a slightly crisper pop.
+  const beaconSeed = (seed * 1.7 + 0.37) % 1;
+  const bp = (t * 0.67 + beaconSeed) % 1; // ~1.49 s cycle → ~40/min
+  const b = bp < 0.55 ? Math.pow(Math.max(0, Math.sin(bp * Math.PI * 2)), strobeMode === 2 ? 4 : 3) : 0;
   if (b > 0.002) lamp(ctx, 0, a.beaconY * glyphS, lr * 0.95 + b * lr * 1.1, `rgba(255,40,32,${(0.34 * b * lvl).toFixed(3)})`);
   // White wingtip strobe — eased, night-dimmed, and gated by attention (strobeMode): 0 = none
   // (distant ambient, keeps the night calm), 1 = a single soft pulse (close traffic), 2 = the
@@ -737,8 +748,11 @@ function drawNavLights(ctx: CanvasRenderingContext2D, glyphS: number, a: LightAn
   if (strobeMode > 0) {
     const peak = STROBE_PEAK_DAY - (STROBE_PEAK_DAY - STROBE_PEAK_NIGHT) * nf; // lower at night
     const sr = Math.min(glyphS * 0.22, STROBE_RADIUS_MAX_PX);
-    const ph = (t / STROBE_PERIOD_S + seed) % 1; // 0..1 within the cycle
-    const w = (STROBE_PULSE_MS * (1 + 0.5 * nf)) / 1000 / STROBE_PERIOD_S; // pulse width (cycle frac), wider at night
+    // ±8% per-aircraft period jitter so the sky's flashes BEAT organically instead of all sharing
+    // one metronome tempo (phase already varies by seed; this varies the rate too — design review v6).
+    const period = STROBE_PERIOD_S * (0.92 + 0.16 * ((seed * 3.3) % 1));
+    const ph = (t / period + seed) % 1; // 0..1 within the cycle
+    const w = (STROBE_PULSE_MS * (1 + 0.5 * nf)) / 1000 / period; // pulse width (cycle frac), wider at night
     let env: number;
     if (strobeMode === 2) {
       const wf = Math.min(w, 0.05 + 0.03 * nf); // crisp sub-pulses for the real double-flash
@@ -750,8 +764,9 @@ function drawNavLights(ctx: CanvasRenderingContext2D, glyphS: number, a: LightAn
       const sa = (peak * env).toFixed(3);
       lamp(ctx, -wx, wy, sr, `rgba(255,255,255,${sa})`);
       lamp(ctx, wx, wy, sr, `rgba(255,255,255,${sa})`);
-      // Xenon-blue bloom: day-only (it is pure glare at night), fading out by nf=0.5.
-      if (nf < 0.5) {
+      // Xenon-blue bloom: ONLY the featured plane, and day-only (pure glare at night, fades out by
+      // nf=0.5) — stops a busy daytime sky from re-introducing a halo swarm (design review v6).
+      if (strobeMode === 2 && nf < 0.5) {
         const ha = (0.25 * (1 - 2 * nf) * env).toFixed(3);
         const hr = Math.min(glyphS * 0.33, STROBE_RADIUS_MAX_PX * 1.5);
         lamp(ctx, -wx, wy, hr, `rgba(200,225,255,${ha})`);
