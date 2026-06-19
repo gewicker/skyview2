@@ -19,6 +19,7 @@ import { MarineLayer } from "./render/MarineLayer";
 import { RadarLayer } from "./render/RadarLayer";
 import { HighwayLayer } from "./render/HighwayLayer";
 import { RailLayer } from "./render/RailLayer";
+import { RailLineLayer } from "./render/RailLineLayer";
 import { TrainLayer } from "./render/TrainLayer";
 import { BusLayer } from "./render/BusLayer";
 import { FerryLayer } from "./render/FerryLayer";
@@ -125,7 +126,8 @@ export default function Display() {
     r.use(new HighwayLayer()); // synthetic road traffic (ambient) — above fog, off by default
     r.use(new FerryRouteLayer()); // dep→arr crossing lane for the tapped ferry (under the hull)
     r.use(new FerryLayer());   // live WA State Ferries (WSF) — real boats (deprecated the synthetic VesselLayer)
-    r.use(new RailLayer());    // Link light rail line + stations — ABOVE the synthetic car/vessel wash
+    r.use(new StaticOverlayLayer([new RailLineLayer()], (f) => (f.cfg.showRail ? "rail" : ""))); // baked Link ribbon — transform-blits during gestures (perf)
+    r.use(new RailLayer());    // Link stations (live bloom + arrival rings) — over the baked ribbon
                                // (real infrastructure shouldn't be buried by the congestion ribbon),
                                // still below trains/aircraft (brightness law)
     r.use(new BusLayer());     // live Metro + ST buses (OBA) — real transit, above the car wash, below trains

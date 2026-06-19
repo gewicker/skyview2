@@ -257,8 +257,10 @@ export class AircraftLayer implements Layer {
       ctx.restore();
 
       // Labels: airborne always; ground only when explicitly selected (declutters airports).
-      // Collected now, then density-limited + decluttered + drawn in one pass below.
-      if (!ground || a.hex === f.selectedHex) {
+      // Collected now, then density-limited + decluttered + drawn in one pass below. Skipped during
+      // a gesture — the per-aircraft measure/declutter/stroke is costly and labels aren't readable
+      // mid-pan anyway (perf: docs/PERF-INTERACT.md).
+      if (!f.interacting && (!ground || a.hex === f.selectedHex)) {
         const lines = labelLines(a, f.cfg);
         if (lines.length) {
           let w = 0;
