@@ -12,7 +12,7 @@
 // Degrades silently: no key on the server ⇒ empty list ⇒ the layer falls back to the timetable sim.
 
 import { RAIL_LINES } from "./rail";
-import { project, posAt, lineLength, type RailLine } from "./path";
+import { project, posAt, lineLength, paceVel, type RailLine } from "./path";
 
 interface RailTrainMsg { id: string; line: string; lat: number; lon: number; devSec: number; updated: number; }
 
@@ -139,7 +139,12 @@ export function tickLiveTrains(dt: number): void {
       // above ground AND in tunnels (where it carries the train at its last known speed). Each poll
       // applies a gentle correction onto the latest fix.
       const total = lineLength(v.ln);
-      v.s += v.dir * v.sVel * Math.max(0, dt);
+      // Predict at the estimated speed; but if we have no estimate yet (sVel ~0, e.g. a train first
+      // acquired mid-tunnel) AND it's submerged, fall back to the timetable pace so it doesn't freeze
+      // over a portal — the exact failure the underground feature exists to prevent.
+      let spd = v.sVel;
+      if (submerged && spd < 1) spd = paceVel(v.ln, v.s);
+      v.s += v.dir * spd * Math.max(0, dt);
       if (v.s < 0) v.s = 0; else if (v.s > total) v.s = total;
     }
     // Drop: hard cap always; otherwise only when ABOVE ground (a tunnel-silent train is healthy).

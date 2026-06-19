@@ -14,16 +14,15 @@ const FADE_START_MIN = 30;
 const ARRIVAL_CUE_S = 1.2;
 const BREATH_HZ = 0.13;
 
-// One restrained, low-chroma family, clear of every other semantic hue (see palette doc).
-// Presence comes from a SOLID disc + a bold dark keyline (contrast on teal), not from alpha on a
-// soft cloud (the design-consult lesson, docs/FIRE-EMS-VISIBILITY.md). `core` = flat disc alpha,
-// `ring` = hue lip alpha, `disc` = solid radius, `r` = outer halo radius. Still source-over, no
-// near-white core, drawn under all traffic — so the eye goes to aircraft first.
-const CAT: Record<IncidentCat, { rgb: string; core: number; ring: number; disc: number; r: number; sev: number }> = {
-  major:   { rgb: "224,116,76",  core: 0.62, ring: 0.95, disc: 8, r: 12, sev: 3000 }, // ember — the only category granted extra presence
-  vehicle: { rgb: "210,166,100", core: 0.50, ring: 0.85, disc: 7, r: 11, sev: 200 },  // earthy amber-tan
-  medical: { rgb: "162,150,196", core: 0.42, ring: 0.80, disc: 7, r: 11, sev: 20 },   // mauve-grey (NOT red — no scanner feel)
-  alarm:   { rgb: "138,152,170", core: 0.32, ring: 0.62, disc: 6, r: 10, sev: 5 },    // grey-blue, the dimmest
+// SYMBOL-led marker (docs/FIRE-EMS-ICONS.md): the colored disc demotes to a small backing DOT and a
+// bold category SYMBOL (flame / cross / impact / bell) is the primary read — shape carries meaning,
+// hue is CVD reinforcement. Smaller overall than before. `dot` = backing radius, `r` = outer halo,
+// `sym` = symbol scale (half-height). Still source-over, no near-white core, drawn under all traffic.
+const CAT: Record<IncidentCat, { rgb: string; core: number; ring: number; dot: number; r: number; sym: number; sev: number }> = {
+  major:   { rgb: "226,120,78",  core: 0.50, ring: 0.92, dot: 5.5, r: 9.5, sym: 7.0, sev: 3000 }, // ember flame — the only category granted extra presence
+  vehicle: { rgb: "212,168,104", core: 0.42, ring: 0.82, dot: 5.0, r: 9.0, sym: 6.0, sev: 200 },  // amber-tan impact mark
+  medical: { rgb: "166,154,200", core: 0.38, ring: 0.78, dot: 5.0, r: 9.0, sym: 6.0, sev: 20 },   // mauve-grey cross (NOT red)
+  alarm:   { rgb: "142,156,174", core: 0.30, ring: 0.60, dot: 4.5, r: 8.5, sym: 5.5, sev: 5 },    // grey-blue bell, dimmest
 };
 
 export class FireEmsLayer implements Layer {
@@ -74,30 +73,29 @@ export class FireEmsLayer implements Layer {
       if (dim <= 0.01) continue;
       const breath = (inc.id === topFire && !muted) ? 0.86 + 0.14 * Math.sin(f.t * 2 * Math.PI * BREATH_HZ) : 1;
 
-      // Soft outer halo (source-over, never additive) — a gentle lift off the basemap.
-      const halo = ctx.createRadialGradient(p.x, p.y, c.disc * 0.5, p.x, p.y, c.r);
-      halo.addColorStop(0, `rgba(${c.rgb},${(0.22 * c.core * dim * breath).toFixed(3)})`);
+      // Soft outer halo (source-over, never additive) — smaller now, just depth.
+      const halo = ctx.createRadialGradient(p.x, p.y, c.dot * 0.5, p.x, p.y, c.r);
+      halo.addColorStop(0, `rgba(${c.rgb},${(0.18 * c.core * dim * breath).toFixed(3)})`);
       halo.addColorStop(1, `rgba(${c.rgb},0)`);
       ctx.fillStyle = halo;
       ctx.beginPath(); ctx.arc(p.x, p.y, c.r, 0, Math.PI * 2); ctx.fill();
 
-      // Solid flat disc — the mass that reads at a glance (earth-tone, capped well below aircraft/transit whites).
+      // Small solid backing dot — the plate the symbol sits on (NOT the primary read anymore).
       ctx.fillStyle = `rgba(${c.rgb},${(c.core * dim * breath).toFixed(3)})`;
-      ctx.beginPath(); ctx.arc(p.x, p.y, c.disc, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x, p.y, c.dot, 0, Math.PI * 2); ctx.fill();
 
-      // Bold dark keyline ON the disc edge — contrast, not brightness, so it survives the teal water
-      // and keeps its rim even when dimmed overnight (gentle night floor, not full coreDim).
+      // Bold dark keyline on the dot edge — contrast, not brightness (gentle night floor).
       ctx.strokeStyle = `rgba(6,12,20,${(0.7 * vis * (0.85 + 0.15 * (1 - nf))).toFixed(3)})`;
       ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(p.x, p.y, c.disc, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(p.x, p.y, c.dot, 0, Math.PI * 2); ctx.stroke();
 
-      // Thin hue lip just outside the keyline — the crisp locus.
+      // Thin hue lip just outside the keyline — the crisp colored locus.
       ctx.strokeStyle = `rgba(${c.rgb},${(c.ring * dim * breath).toFixed(3)})`;
       ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(p.x, p.y, c.disc + 1.5, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(p.x, p.y, c.dot + 1.3, 0, Math.PI * 2); ctx.stroke();
 
-      // Inner category mark over the solid center (shape = category for day/CVD legibility).
-      drawMark(ctx, p.x, p.y, inc.cat, c.rgb, Math.min(0.98, c.ring * dim + 0.12));
+      // PRIMARY READ: the category SYMBOL on top of the dot (shape carries meaning; hue reinforces).
+      drawSymbol(ctx, p.x, p.y, inc.cat, c.rgb, c.sym, Math.min(0.98, c.ring * dim + 0.14), vis);
 
       // One-time arrival ripple — a single raindrop, day only, and only for a genuinely FRESH
       // dispatch (so the initial load of a backlog of old-but-just-fetched incidents doesn't ripple).
@@ -115,19 +113,81 @@ export class FireEmsLayer implements Layer {
   }
 }
 
-// Small inner marks: a flame notch (major), a plus (medical), a slash (vehicle), none (alarm).
-function drawMark(ctx: CanvasRenderingContext2D, x: number, y: number, cat: IncidentCat, rgb: string, a: number): void {
-  if (cat === "alarm") return;
-  ctx.strokeStyle = `rgba(${rgb},${a.toFixed(3)})`;
-  ctx.fillStyle = `rgba(${rgb},${a.toFixed(3)})`;
-  ctx.lineWidth = 1.4;
-  if (cat === "medical") {
-    ctx.beginPath(); ctx.moveTo(x - 2.5, y); ctx.lineTo(x + 2.5, y); ctx.moveTo(x, y - 2.5); ctx.lineTo(x, y + 2.5); ctx.stroke();
+// The category SYMBOL is the primary read (shape carries meaning, color reinforces). Each is drawn
+// with a dark under-stroke/under-plate first so it survives the teal water by CONTRAST, then the hue
+// pass — the same keyline law that saved the disc, now applied to the glyph. No white (the flame's
+// faint ember tongue is the only lifted-light pixel). See docs/FIRE-EMS-ICONS.md.
+function drawSymbol(ctx: CanvasRenderingContext2D, x: number, y: number, cat: IncidentCat, rgb: string, s: number, as: number, vis: number): void {
+  const dark = `rgba(6,12,20,${(0.6 * vis).toFixed(3)})`;
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  if (cat === "major") {
+    flamePath(ctx, x, y, s);
+    ctx.lineWidth = 1.6; ctx.strokeStyle = dark; ctx.stroke();
+    ctx.fillStyle = `rgba(${rgb},${as.toFixed(3)})`; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y + s * 0.34, s * 0.3, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,196,128,${(as * 0.55).toFixed(3)})`; ctx.fill(); // ember tongue (not white)
+  } else if (cat === "medical") {
+    const al = s * 0.85, aw = s * 0.3;
+    ctx.fillStyle = dark;
+    roundRect(ctx, x - aw - 0.8, y - al - 0.8, (aw + 0.8) * 2, (al + 0.8) * 2, aw * 0.6); ctx.fill();
+    roundRect(ctx, x - al - 0.8, y - aw - 0.8, (al + 0.8) * 2, (aw + 0.8) * 2, aw * 0.6); ctx.fill();
+    ctx.fillStyle = `rgba(${rgb},${as.toFixed(3)})`;
+    roundRect(ctx, x - aw, y - al, aw * 2, al * 2, aw * 0.6); ctx.fill();
+    roundRect(ctx, x - al, y - aw, al * 2, aw * 2, aw * 0.6); ctx.fill();
   } else if (cat === "vehicle") {
-    ctx.beginPath(); ctx.moveTo(x - 2.5, y + 2); ctx.lineTo(x + 2.5, y - 2); ctx.stroke();
-  } else { // major — a small upward flame notch
-    ctx.beginPath();
-    ctx.moveTo(x, y - 3.2); ctx.lineTo(x + 2.2, y + 2); ctx.lineTo(x - 2.2, y + 2); ctx.closePath();
-    ctx.fill();
+    impactPath(ctx, x, y, s);
+    ctx.lineWidth = 3.0; ctx.strokeStyle = dark; ctx.stroke();
+    impactPath(ctx, x, y, s);
+    ctx.lineWidth = 1.8; ctx.strokeStyle = `rgba(${rgb},${as.toFixed(3)})`; ctx.stroke();
+  } else { // alarm — bell
+    bellPath(ctx, x, y, s);
+    ctx.lineWidth = 1.6; ctx.strokeStyle = dark; ctx.stroke();
+    ctx.fillStyle = `rgba(${rgb},${as.toFixed(3)})`; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y + s * 0.72, s * 0.22, 0, Math.PI * 2);
+    ctx.strokeStyle = dark; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.fillStyle = `rgba(${rgb},${as.toFixed(3)})`; ctx.fill();
   }
+  ctx.restore();
+}
+
+function flamePath(ctx: CanvasRenderingContext2D, x: number, y: number, s: number): void {
+  ctx.beginPath();
+  ctx.moveTo(x, y - s);
+  ctx.quadraticCurveTo(x + s * 0.78, y - s * 0.18, x + s * 0.52, y + s * 0.5);
+  ctx.quadraticCurveTo(x + s * 0.4, y + s * 0.95, x, y + s * 0.95);
+  ctx.quadraticCurveTo(x - s * 0.4, y + s * 0.95, x - s * 0.52, y + s * 0.4);
+  ctx.quadraticCurveTo(x - s * 0.52, y, x - s * 0.13, y - s * 0.36);
+  ctx.quadraticCurveTo(x, y, x, y - s);
+  ctx.closePath();
+}
+
+function impactPath(ctx: CanvasRenderingContext2D, x: number, y: number, s: number): void {
+  ctx.beginPath();
+  ctx.moveTo(x - s * 0.9, y + s * 0.5);
+  ctx.lineTo(x, y - s * 0.2);
+  ctx.lineTo(x + s * 0.9, y + s * 0.5);
+  ctx.moveTo(x, y - s * 0.45); ctx.lineTo(x, y - s * 0.95);
+  ctx.moveTo(x - s * 0.4, y - s * 0.45); ctx.lineTo(x - s * 0.62, y - s * 0.85);
+  ctx.moveTo(x + s * 0.4, y - s * 0.45); ctx.lineTo(x + s * 0.62, y - s * 0.85);
+}
+
+function bellPath(ctx: CanvasRenderingContext2D, x: number, y: number, s: number): void {
+  ctx.beginPath();
+  ctx.moveTo(x - s * 0.62, y + s * 0.45);
+  ctx.quadraticCurveTo(x - s * 0.62, y - s * 0.5, x, y - s * 0.7);
+  ctx.quadraticCurveTo(x + s * 0.62, y - s * 0.5, x + s * 0.62, y + s * 0.45);
+  ctx.lineTo(x - s * 0.62, y + s * 0.45);
+  ctx.closePath();
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }

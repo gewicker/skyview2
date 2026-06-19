@@ -1,12 +1,12 @@
-// Crossing-lane reveal for the SELECTED ferry only (never ambient): a dashed steel line along the
-// departing → arriving terminal lane, with a ring + label at each terminal. The marine analog of
-// the aircraft RouteLayer — appears on tap, clears on deselect. Uses the dep/arr terminal coords
-// the server enriches each ferry with (so it needs no extra lookup). A WSF crossing is short, so a
-// straight rhumb line on the projection is exact enough (no great-circle).
+// Crossing endpoints for the SELECTED ferry (never ambient): a labelled ring at the departing and
+// arriving terminals, so a tap reads "Seattle → Bremerton" spatially. Appears on tap, clears on
+// deselect. We deliberately do NOT draw a straight dep→arr line: a rhumb chord cuts across land
+// (Seattle→Bremerton runs over Bainbridge/Kitsap). A true on-water crossing line needs real ferry
+// route geometry (OSM water paths) — a planned upgrade. Until then, the two terminals carry it.
 import type { Layer, FrameContext } from "./types";
 import { liveFerries } from "./liveferries";
 
-const LANE = "140,195,235"; // steel-cyan, matching the ferry hull
+const LANE = "150,205,242"; // steel-cyan, matching the ferry hull
 
 export class FerryRouteLayer implements Layer {
   readonly name = "ferry-route";
@@ -25,17 +25,8 @@ export class FerryRouteLayer implements Layer {
     ctx.save();
     ctx.lineCap = "round";
 
-    // The crossing lane.
-    ctx.setLineDash([7, 6]);
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = `rgba(${LANE},0.5)`;
-    ctx.beginPath();
-    ctx.moveTo(dep.x, dep.y);
-    ctx.lineTo(arr.x, arr.y);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
     // Terminal endpoints: departing (hollow) and arriving (filled) + names split from the route.
+    // (No straight connecting line — it would cross land; see header.)
     const [depName, arrName] = splitRoute(v.route);
     this.terminal(f, dep, depName, false);
     this.terminal(f, arr, arrName, true);
