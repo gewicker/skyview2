@@ -23,6 +23,8 @@ export class RailLayer implements Layer {
     ctx.save();
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
+    const cd = coreDim();            // night dim is constant within a frame — hoist out of the per-station loop
+    const coreStyle = `rgba(150,235,200,${(0.62 * cd).toFixed(3)})`; // station core fill (same every station)
     const trains = liveTrains();
     for (const s of RAIL_STATIONS) {
       const p = f.cam.project(s.lat, s.lon);
@@ -49,7 +51,7 @@ export class RailLayer implements Layer {
       ctx.stroke();
       ctx.beginPath();                                 // core — dim jade-white (near-white is reserved for the moving train)
       ctx.arc(p.x, p.y, 2.0 * sr, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(150,235,200,${(0.62 * coreDim()).toFixed(3)})`;
+      ctx.fillStyle = coreStyle;
       ctx.fill();
     }
     // Arrival rings: a single slow expanding ring as a train reaches a station — a quiet "bell of

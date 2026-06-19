@@ -53,7 +53,7 @@ export class FerryLayer implements Layer {
       // Speed-scaled V-wake astern: length + spread grow with speed, and the foam "flows" aft via an
       // animated dash offset whose rate also scales with speed — so a faster boat plainly reads as
       // faster. Calm by design (a slow scroll, no strobe). Drawn under the hull.
-      if (moving && s01 > 0.05) {
+      if (moving && s01 > 0.05 && !f.interacting) {  // skip the wake (3 gradients/ferry) mid-gesture — GC churn, imperceptible while panning; hull/halo/core below unchanged
         const len = 12 + 34 * s01;  // px of wake astern
         const spread = 3 + 5 * s01; // half-width of the V at its tail
         const stern = -8;

@@ -58,17 +58,20 @@ export class BusLayer implements Layer {
       }
 
       const col = t.rapidRide ? RAPID : BUS; // RapidRide branded red; local routes violet
-      // short comet tail from the lagging anchor
+      // short comet tail from the lagging anchor — skip the per-bus gradient mid-gesture (GC churn,
+      // imperceptible while panning); the chip/halo/core below still draw. Identical at rest.
       const ap = f.cam.project(t.alat, t.alon);
-      const grad = ctx.createLinearGradient(ap.x, ap.y, p.x, p.y);
-      grad.addColorStop(0, `rgba(${col},0)`);
-      grad.addColorStop(1, `rgba(${col},${0.45 * a})`);
-      ctx.strokeStyle = grad;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(ap.x, ap.y);
-      ctx.lineTo(p.x, p.y);
-      ctx.stroke();
+      if (!f.interacting) {
+        const grad = ctx.createLinearGradient(ap.x, ap.y, p.x, p.y);
+        grad.addColorStop(0, `rgba(${col},0)`);
+        grad.addColorStop(1, `rgba(${col},${0.45 * a})`);
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(ap.x, ap.y);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+      }
       // soft halo (plain source-over — NO additive glow; that's aircraft-only)
       ctx.beginPath();
       ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);

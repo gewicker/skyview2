@@ -118,9 +118,25 @@ export function startLiveTrains(): void {
   setInterval(poll, 20 * 1000);
 }
 
+// --- Per-frame memo for liveTrains() -------------------------------------------------------------
+// Both RailLayer (station bloom proximity) and TrainLayer call liveTrains() every frame, so the full
+// arc-length walk (posAt head+tail + lineLength per on-line train) + array build ran TWICE per frame.
+// We memoize the computed array within a single render frame and return the cached copy on a second
+// call in the same frame. Cache key: performance.now() bucketed to an ~8 ms window — both layers
+// call liveTrains() within microseconds of each other inside one synchronous frame, so they share a
+// bucket, while the next rAF (≥~16 ms later at 60 fps, more on the Pi) lands in a new bucket and
+// recomputes fresh positions. tickLiveTrains() (once/frame, advances positions) also hard-invalidates
+// so the very next liveTrains() after a tick always rebuilds — belt-and-suspenders freshness for
+// RailLayer, which draws (and calls liveTrains()) BEFORE TrainLayer's tick in the layer order.
+const FRAME_BUCKET_MS = 8;
+let memoTrains: LiveTrain[] | null = null;
+let memoKey = -1;
+
 /** Advance positions once per frame: ease toward fixes above ground, dead-reckon at timetable pace
  *  when fixes go stale (tunnel / missed poll). Drops vehicles that have truly gone quiet. */
 export function tickLiveTrains(dt: number): void {
+  memoTrains = null; // positions are about to change → invalidate the per-frame memo
+  memoKey = -1;
   const kp = 1 - Math.exp(-Math.max(0, dt) / POS_TAU);
   const ka = 1 - Math.exp(-Math.max(0, dt) / ANCHOR_TAU);
   const now = Date.now();
@@ -152,8 +168,13 @@ export function tickLiveTrains(dt: number): void {
   }
 }
 
-/** Current live trains (position resolved from arc-length when on-line, raw fallback otherwise). */
+/** Current live trains (position resolved from arc-length when on-line, raw fallback otherwise).
+ *  Memoized once per render frame (see FRAME_BUCKET_MS above) so RailLayer + TrainLayer share one
+ *  computation instead of running the arc-length walk twice. Positions are recomputed on the next
+ *  frame (new time bucket) and immediately after tickLiveTrains(). */
 export function liveTrains(): LiveTrain[] {
+  const key = Math.floor(performance.now() / FRAME_BUCKET_MS);
+  if (memoTrains && key === memoKey) return memoTrains;
   const now = Date.now();
   const out: LiveTrain[] = [];
   for (const [id, v] of vehicles) {
@@ -171,6 +192,8 @@ export function liveTrains(): LiveTrain[] {
     if (fade <= 0) continue;
     out.push({ id, line: v.line, lat, lon, alat, alon, devSec: v.devSec, fade, submerged });
   }
+  memoTrains = out;
+  memoKey = key;
   return out;
 }
 

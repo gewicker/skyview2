@@ -94,28 +94,35 @@ export class TrainLayer implements Layer {
       if (t.submerged) {
         const sp = f.cam.project(t.alat, t.alon);
         const da = a * 0.6;
-        const tg = ctx.createLinearGradient(sp.x, sp.y, p.x, p.y);
-        tg.addColorStop(0, `rgba(${base},0)`);
-        tg.addColorStop(1, `rgba(${base},${(0.3 * da).toFixed(3)})`);
-        ctx.strokeStyle = tg;
-        ctx.lineWidth = 1.8;
-        ctx.beginPath(); ctx.moveTo(sp.x, sp.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+        // Mid-gesture: skip the per-train along-track tail gradient (GC churn, imperceptible while
+        // panning) — draw just the ghost ring. At rest the tail draws exactly as before.
+        if (!f.interacting) {
+          const tg = ctx.createLinearGradient(sp.x, sp.y, p.x, p.y);
+          tg.addColorStop(0, `rgba(${base},0)`);
+          tg.addColorStop(1, `rgba(${base},${(0.3 * da).toFixed(3)})`);
+          ctx.strokeStyle = tg;
+          ctx.lineWidth = 1.8;
+          ctx.beginPath(); ctx.moveTo(sp.x, sp.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+        }
         ctx.beginPath(); ctx.arc(p.x, p.y, 3.6, 0, Math.PI * 2);
         ctx.strokeStyle = `rgba(${base},${(0.8 * da).toFixed(3)})`;
         ctx.lineWidth = 1.4; ctx.stroke();
         continue;
       }
-      // comet tail from the lagging anchor
+      // comet tail from the lagging anchor — skip the per-train gradient mid-gesture (GC churn,
+      // not perceptible while panning); the body/glow/glyph below still draw. Identical at rest.
       const ap = f.cam.project(t.alat, t.alon);
-      const grad = ctx.createLinearGradient(ap.x, ap.y, p.x, p.y);
-      grad.addColorStop(0, `rgba(${base},0)`);
-      grad.addColorStop(1, `rgba(${base},${0.6 * a})`);
-      ctx.strokeStyle = grad;
-      ctx.lineWidth = 2.8;
-      ctx.beginPath();
-      ctx.moveTo(ap.x, ap.y);
-      ctx.lineTo(p.x, p.y);
-      ctx.stroke();
+      if (!f.interacting) {
+        const grad = ctx.createLinearGradient(ap.x, ap.y, p.x, p.y);
+        grad.addColorStop(0, `rgba(${base},0)`);
+        grad.addColorStop(1, `rgba(${base},${0.6 * a})`);
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 2.8;
+        ctx.beginPath();
+        ctx.moveTo(ap.x, ap.y);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+      }
       // soft glow
       ctx.beginPath();
       ctx.arc(p.x, p.y, 9, 0, Math.PI * 2);
@@ -167,15 +174,18 @@ export class TrainLayer implements Layer {
       if (!onScreen(p.x, p.y)) continue;
       const tp = f.cam.project(t.tlat, t.tlon);
       const base = rgbStr(desat(t.line.rgb, 0.35)); // scheduled => ~35% desaturated
-      const grad = ctx.createLinearGradient(tp.x, tp.y, p.x, p.y);
-      grad.addColorStop(0, `rgba(${base},0)`);
-      grad.addColorStop(1, `rgba(${base},0.5)`);
-      ctx.strokeStyle = grad;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(tp.x, tp.y);
-      ctx.lineTo(p.x, p.y);
-      ctx.stroke();
+      // Skip the scheduled-bead gradient tail mid-gesture (GC churn); the hollow railcar still draws.
+      if (!f.interacting) {
+        const grad = ctx.createLinearGradient(tp.x, tp.y, p.x, p.y);
+        grad.addColorStop(0, `rgba(${base},0)`);
+        grad.addColorStop(1, `rgba(${base},0.5)`);
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(tp.x, tp.y);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+      }
       // hollow railcar outline (no filled core) marks "scheduled, not live"
       ctx.strokeStyle = `rgba(${base},0.75)`;
       ctx.lineWidth = 1.4;
