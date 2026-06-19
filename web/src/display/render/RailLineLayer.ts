@@ -26,6 +26,13 @@ const TUNNEL_SPANS = buildTunnelSpans();
 const LINE = "rgba(40,225,170,";            // transit jade (alpha appended)
 const LINE_HAIR = "rgba(120,215,180,0.55)"; // quiet coaxial centerline (receded so the train out-reads the line)
 
+// East Link (2 Line) emphasis — DELIBERATELY NOT done here by recoloring. RAIL_SEGMENTS are plain
+// polylines with no line key (RailStation has no line field either), so there is no clean way to tint
+// just the home spine, and docs/RAIL-BALANCE.md forbids a loud line highlight (the live train must
+// out-read the line). The home-line emphasis is instead carried as calm station-area neighborhood
+// labels in places.ts (Wilburton / Spring District / BelRed / Overlake, plus Downtown Bellevue etc.),
+// which name the 2 Line corridor through Bellevue/Redmond without disturbing the rail color hierarchy.
+
 interface Pt { x: number; y: number }
 
 export class RailLineLayer implements Layer {

@@ -10,6 +10,7 @@ import { coreDim } from "./night";
 
 const BUS = "150,130,235";    // periwinkle violet — regular Metro / ST routes
 const RAPID = "224,96,86";    // RapidRide brand red — the frequent network reads apart from local buses
+const WATERTAXI = "150,205,242"; // steel-cyan ferry hull — KC Water Taxi reads as marine, not road
 const CAP = 50;               // max beads drawn per frame (nearest home wins) — trimmed for calm (design audit v5)
 
 export class BusLayer implements Layer {
@@ -41,6 +42,21 @@ export class BusLayer implements Layer {
       const p = f.cam.project(t.lat, t.lon);
       if (p.x < -15 || p.x > w + 15 || p.y < -15 || p.y > h + 15) continue;
       const a = t.fade * zoomMul;
+
+      // King County Water Taxi: a small steel-cyan marine bead (rare; a simple distinct dot, no
+      // road-bus chip/tail) so it reads as a vessel sitting apart from the violet/red road buses.
+      if (t.waterTaxi) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${WATERTAXI},${0.16 * a})`;
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2.4, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${WATERTAXI},${0.9 * a})`;
+        ctx.fill();
+        continue;
+      }
+
       const col = t.rapidRide ? RAPID : BUS; // RapidRide branded red; local routes violet
       // short comet tail from the lagging anchor
       const ap = f.cam.project(t.alat, t.alon);

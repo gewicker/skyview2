@@ -14,7 +14,12 @@ export class PlaceLabelsLayer implements Layer {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.lineJoin = "round";
+    // Fine-grained home-area neighborhood/landmark labels (place.local) only appear once the user
+    // has zoomed past the default ~16-mile view (mapZoom 1 → spanMi 16; 1.6 → ~10mi). This keeps
+    // the wide ambient view calm/uncluttered while letting the Eastside read richly up close.
+    const showLocal = (f.view.mapZoom || 1) >= 1.6;
     for (const pl of PLACES) {
+      if (pl.local && !showLocal) continue;
       const p = f.cam.project(pl.lat, pl.lon);
       if (p.x < -60 || p.x > f.w + 60 || p.y < -20 || p.y > f.h + 20) continue;
       ctx.font = pl.major ? "600 13px system-ui, sans-serif" : pl.water ? "italic 11px system-ui, sans-serif" : "500 11px system-ui, sans-serif";

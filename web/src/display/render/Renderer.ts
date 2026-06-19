@@ -62,9 +62,9 @@ export class Renderer {
   use(layer: Layer): void { this.layers.push(layer); }
 
   start(): void {
-    const GESTURE_FPS = 40; // pace gestures instead of running uncapped: on a Pi, uncapped just burns
-                            // the frame budget on heavy partial frames; a steady ~40fps reads smoother
-                            // and leaves headroom (perf: docs/PERF-INTERACT.md).
+    const GESTURE_FPS = 60; // run gestures at display-native now that the heavy geometry is baked +
+                            // decimated (frames are cheap). A lower cap was muting scroll/zoom
+                            // responsiveness, most noticeably zoomed in. (perf: docs/PERF-INTERACT.md)
     const loop = (now: number) => {
       this.raf = requestAnimationFrame(loop);
       const interacting = now - this.lastInteractAt < 220;
