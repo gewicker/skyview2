@@ -51,16 +51,20 @@ export class HighwayLayer implements Layer {
       for (const hw of HIGHWAYS) hw.segments.forEach((seg, si) => this.flat.push({ hw, si, seg }));
     }
     const v = f.view;
+    // Decimate while panning/zooming (stride 4 ≈ −75% projections per frame); full fidelity at rest.
+    // stride is in the key so settling forces one clean full reproject. (perf: docs/PERF-GESTURE.md)
+    const stride = f.interacting ? 4 : 1;
     // Everything Camera derives from: view centre/zoom + config rotation/mirror + screen size/dpr.
-    const key = `${v.mapCenterLat},${v.mapCenterLon},${v.mapZoom},${f.cfg.mapRotationDeg},${f.cfg.mirrorX ? 1 : 0},${f.cfg.mirrorY ? 1 : 0},${f.w},${f.h},${f.dpr}`;
+    const key = `${v.mapCenterLat},${v.mapCenterLon},${v.mapZoom},${f.cfg.mapRotationDeg},${f.cfg.mirrorX ? 1 : 0},${f.cfg.mirrorY ? 1 : 0},${f.w},${f.h},${f.dpr},${stride}`;
     if (key === this.projKey) return; // view unchanged → reuse cached screen coords
     this.projKey = key;
     for (let i = 0; i < this.flat.length; i++) {
-      const seg = this.flat[i].seg;
+      const seg = this.flat[i].seg, n = seg.length;
       let pts = this.proj[i];
       if (!pts) { pts = []; this.proj[i] = pts; }
       pts.length = 0;
-      for (const [lat, lon] of seg) pts.push(f.cam.project(lat, lon));
+      for (let k = 0; k < n; k += stride) pts.push(f.cam.project(seg[k][0], seg[k][1]));
+      if (n > 0 && (n - 1) % stride !== 0) pts.push(f.cam.project(seg[n - 1][0], seg[n - 1][1]));
     }
   }
 

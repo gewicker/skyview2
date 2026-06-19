@@ -3,12 +3,13 @@
 // tail (collapses at stops), fade a vehicle out when it stops appearing. Ambient, label-free.
 // Degrades silently: no key / empty list ⇒ no buses.
 
-interface BusMsg { id: string; lat: number; lon: number; updated: number; }
+interface BusMsg { id: string; lat: number; lon: number; updated: number; route?: string; headsign?: string; }
 
 interface Veh {
   lat: number; lon: number;   // eased shown position
   alat: number; alon: number; // lagging anchor (tail origin)
   tLat: number; tLon: number; // latest poll target
+  route: string; headsign: string;
   lastSeen: number;
 }
 
@@ -16,7 +17,11 @@ export interface LiveBus {
   lat: number; lon: number;
   alat: number; alon: number;
   fade: number;
+  route: string; headsign: string; rapidRide: boolean;
 }
+
+/** RapidRide routes are named "A Line".."H Line" — frequent network, branded apart from local buses. */
+export function isRapidRide(route: string): boolean { return /\bLine$/.test(route); }
 
 const POS_TAU = 1.6;    // s — shown eases toward target
 const ANCHOR_TAU = 2.2; // s — shorter tail than trains (buses stop more)
@@ -40,8 +45,10 @@ export function startLiveBuses(): void {
           const v = vehicles.get(m.id);
           if (v) {
             v.tLat = m.lat; v.tLon = m.lon; v.lastSeen = now;
+            v.route = m.route ?? ""; v.headsign = m.headsign ?? "";
           } else {
-            vehicles.set(m.id, { lat: m.lat, lon: m.lon, alat: m.lat, alon: m.lon, tLat: m.lat, tLon: m.lon, lastSeen: now });
+            vehicles.set(m.id, { lat: m.lat, lon: m.lon, alat: m.lat, alon: m.lon, tLat: m.lat, tLon: m.lon,
+              route: m.route ?? "", headsign: m.headsign ?? "", lastSeen: now });
           }
         }
       })
@@ -71,7 +78,7 @@ export function liveBuses(): LiveBus[] {
     const age = (now - v.lastSeen) / 1000;
     const fade = age <= STALE_S ? 1 : age >= DROP_S ? 0 : 1 - (age - STALE_S) / (DROP_S - STALE_S);
     if (fade <= 0) continue;
-    out.push({ lat: v.lat, lon: v.lon, alat: v.alat, alon: v.alon, fade });
+    out.push({ lat: v.lat, lon: v.lon, alat: v.alat, alon: v.alon, fade, route: v.route, headsign: v.headsign, rapidRide: isRapidRide(v.route) });
   }
   return out;
 }

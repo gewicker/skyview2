@@ -16,7 +16,7 @@ import type { Aircraft, Config } from "@shared/types";
 export type TransitPick =
   | { kind: "station"; title: string }
   | { kind: "train"; line: string; devSec: number }
-  | { kind: "bus" }
+  | { kind: "bus"; route: string; headsign: string }
   | { kind: "ferry"; id: number; title: string; route: string; atDock: boolean; speed: number }
   | { kind: "fire"; id: string; title: string; address: string; time: number };
 
@@ -186,7 +186,7 @@ export class Renderer {
       for (const s of RAIL_STATIONS) consider(s.lat, s.lon, () => ({ kind: "station", title: s.name }));
     }
     if (cfg.showBuses) {
-      for (const b of liveBuses()) consider(b.lat, b.lon, () => ({ kind: "bus" }));
+      for (const b of liveBuses()) consider(b.lat, b.lon, () => ({ kind: "bus", route: b.route, headsign: b.headsign }));
     }
     if (cfg.showFerries) {
       for (const fr of liveFerries()) consider(fr.lat, fr.lon, () => ({ kind: "ferry", id: fr.id, title: fr.name, route: fr.route, atDock: fr.atDock, speed: fr.speed }));

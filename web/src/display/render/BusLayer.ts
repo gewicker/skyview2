@@ -8,8 +8,9 @@ import type { Layer, FrameContext } from "./types";
 import { startLiveBuses, tickLiveBuses, liveBuses } from "./livebuses";
 import { coreDim } from "./night";
 
-const BUS = "150,130,235"; // periwinkle violet
-const CAP = 50;            // max beads drawn per frame (nearest home wins) — trimmed for calm (design audit v5)
+const BUS = "150,130,235";    // periwinkle violet — regular Metro / ST routes
+const RAPID = "224,96,86";    // RapidRide brand red — the frequent network reads apart from local buses
+const CAP = 50;               // max beads drawn per frame (nearest home wins) — trimmed for calm (design audit v5)
 
 export class BusLayer implements Layer {
   readonly name = "buses";
@@ -40,11 +41,12 @@ export class BusLayer implements Layer {
       const p = f.cam.project(t.lat, t.lon);
       if (p.x < -15 || p.x > w + 15 || p.y < -15 || p.y > h + 15) continue;
       const a = t.fade * zoomMul;
+      const col = t.rapidRide ? RAPID : BUS; // RapidRide branded red; local routes violet
       // short comet tail from the lagging anchor
       const ap = f.cam.project(t.alat, t.alon);
       const grad = ctx.createLinearGradient(ap.x, ap.y, p.x, p.y);
-      grad.addColorStop(0, `rgba(${BUS},0)`);
-      grad.addColorStop(1, `rgba(${BUS},${0.45 * a})`);
+      grad.addColorStop(0, `rgba(${col},0)`);
+      grad.addColorStop(1, `rgba(${col},${0.45 * a})`);
       ctx.strokeStyle = grad;
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -54,7 +56,7 @@ export class BusLayer implements Layer {
       // soft halo (plain source-over — NO additive glow; that's aircraft-only)
       ctx.beginPath();
       ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${BUS},${0.18 * a})`;
+      ctx.fillStyle = `rgba(${col},${0.18 * a})`;
       ctx.fill();
       // a small bus CHIP oriented to heading (a stubby vehicle, not a dot) with a bright
       // windshield core at the front. Heading from screen motion; level when stopped.
@@ -62,7 +64,7 @@ export class BusLayer implements Layer {
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.rotate(dx * dx + dy * dy > 0.8 ? Math.atan2(dy, dx) : 0);
-      ctx.fillStyle = `rgba(${BUS},${0.88 * a})`;
+      ctx.fillStyle = `rgba(${col},${0.88 * a})`;
       ctx.fillRect(-2.2, -1.5, 4.4, 3.0);
       ctx.beginPath();
       ctx.arc(1.3, 0, 1.0, 0, Math.PI * 2);

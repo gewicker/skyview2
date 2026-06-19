@@ -610,7 +610,7 @@ function routeProvenance(a: Aircraft): { mark: string; word: string; note: strin
 // schedule deviation as plain-English on-time/late/early.
 function TransitCard({ pick, onClose }: { pick: TransitPick; onClose: () => void }) {
   const lineColor = pick.kind === "train" ? (pick.line === "1" ? "#28a05a" : "#3aa0d8")
-    : pick.kind === "bus" ? "#9a8cf0"
+    : pick.kind === "bus" ? (/\bLine$/.test(pick.route) ? "#e06056" : "#9a8cf0")
     : pick.kind === "ferry" ? "#78aacd"
     : pick.kind === "fire" ? incidentColor(pick.title)
     : "#28e1aa";
@@ -619,7 +619,7 @@ function TransitCard({ pick, onClose }: { pick: TransitPick; onClose: () => void
   else if (pick.kind === "train") { title = pick.line + " Line"; sub = "Link train · live"; detail = delayText(pick.devSec); }
   else if (pick.kind === "ferry") { title = pick.title; sub = pick.route || "WA State Ferry"; detail = pick.atDock ? "At dock" : Math.round(pick.speed) + " kt"; }
   else if (pick.kind === "fire") { title = pick.title; sub = pick.address || "Fire/EMS 911 dispatch"; detail = agoText(pick.time); }
-  else { title = "Bus"; sub = "Metro / Sound Transit · live"; }
+  else { title = pick.route || "Bus"; sub = pick.headsign ? "→ " + pick.headsign : "Metro / Sound Transit · live"; }
   return (
     <div style={{ position: "absolute", left: 16, bottom: 160, minWidth: 184,
       background: "rgba(8,12,20,0.92)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12,

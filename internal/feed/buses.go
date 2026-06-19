@@ -21,12 +21,15 @@ import (
 // Agencies whose buses we pull (everything in the home radius is essentially these two).
 var busAgencies = []string{"1", "40"} // King County Metro, Sound Transit
 
-// Bus is one live bus: a position + freshness. No route/line needed (ambient beads, no labels).
+// Bus is one live bus: position + freshness + (when resolvable) its route short-name and headsign,
+// for the tap card and RapidRide branding.
 type Bus struct {
-	ID      string  `json:"id"`
-	Lat     float64 `json:"lat"`
-	Lon     float64 `json:"lon"`
-	Updated int64   `json:"updated"` // vehicle's lastLocationUpdateTime, unix ms
+	ID       string  `json:"id"`
+	Lat      float64 `json:"lat"`
+	Lon      float64 `json:"lon"`
+	Route    string  `json:"route,omitempty"`    // route short name: "B Line", "550", "8"
+	Headsign string  `json:"headsign,omitempty"` // trip headsign / destination: "Redmond"
+	Updated  int64   `json:"updated"`            // vehicle's lastLocationUpdateTime, unix ms
 }
 
 // BusSnapshot is what /api/buses serves.
@@ -83,7 +86,8 @@ func (b *Buses) Run(ctx context.Context) {
 	}
 }
 
-// obaVehiclesResp mirrors the fields we use from a vehicles-for-agency response.
+// obaVehiclesResp mirrors the fields we use from a vehicles-for-agency response, including the
+// `references` block (trips → routeId + headsign; routes → shortName) so we can name each vehicle.
 type obaVehiclesResp struct {
 	Data struct {
 		List []struct {
@@ -96,6 +100,17 @@ type obaVehiclesResp struct {
 			Phase  string `json:"phase"`
 			TripID string `json:"tripId"`
 		} `json:"list"`
+		References struct {
+			Trips []struct {
+				ID           string `json:"id"`
+				RouteID      string `json:"routeId"`
+				TripHeadsign string `json:"tripHeadsign"`
+			} `json:"trips"`
+			Routes []struct {
+				ID        string `json:"id"`
+				ShortName string `json:"shortName"`
+			} `json:"routes"`
+		} `json:"references"`
 	} `json:"data"`
 }
 
@@ -127,6 +142,16 @@ func (b *Buses) poll() {
 			continue
 		}
 		got = true
+		// Build tripId→{routeId,headsign} and routeId→shortName lookups from the references block.
+		type tripRef struct{ routeID, headsign string }
+		tripByID := make(map[string]tripRef, len(body.Data.References.Trips))
+		for _, t := range body.Data.References.Trips {
+			tripByID[t.ID] = tripRef{t.RouteID, t.TripHeadsign}
+		}
+		routeName := make(map[string]string, len(body.Data.References.Routes))
+		for _, r := range body.Data.References.Routes {
+			routeName[r.ID] = r.ShortName
+		}
 		for _, it := range body.Data.List {
 			if it.Phase != "in_progress" || it.VehicleID == "" {
 				continue
@@ -143,11 +168,14 @@ func (b *Buses) poll() {
 			if distMiles(v.Lat, v.Lon, it.Location.Lat, it.Location.Lon) > radius {
 				continue // outside the home radius
 			}
+			tr := tripByID[it.TripID]
 			byVehicle[it.VehicleID] = Bus{
-				ID:      it.VehicleID,
-				Lat:     it.Location.Lat,
-				Lon:     it.Location.Lon,
-				Updated: it.LastLocationUpdateTime,
+				ID:       it.VehicleID,
+				Lat:      it.Location.Lat,
+				Lon:      it.Location.Lon,
+				Route:    routeName[tr.routeID],
+				Headsign: tr.headsign,
+				Updated:  it.LastLocationUpdateTime,
 			}
 		}
 	}

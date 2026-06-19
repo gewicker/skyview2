@@ -46,21 +46,15 @@ export class RailLayer implements Layer {
 
   private ensureProjected(f: FrameContext): void {
     const v = f.view;
-    const key = `${v.mapCenterLat},${v.mapCenterLon},${v.mapZoom},${f.cfg.mapRotationDeg},${f.cfg.mirrorX ? 1 : 0},${f.cfg.mirrorY ? 1 : 0},${f.w},${f.h},${f.dpr}`;
+    // Decimate the ~4,900-vertex geometry while panning/zooming (stride 4 ≈ −75% projections per
+    // frame), snapping back to full fidelity the instant the gesture ends. The stride is part of the
+    // cache key, so settling forces one clean full reproject. (perf: docs/PERF-GESTURE.md)
+    const stride = f.interacting ? 4 : 1;
+    const key = `${v.mapCenterLat},${v.mapCenterLon},${v.mapZoom},${f.cfg.mapRotationDeg},${f.cfg.mirrorX ? 1 : 0},${f.cfg.mirrorY ? 1 : 0},${f.w},${f.h},${f.dpr},${stride}`;
     if (key === this.projKey) return;
     this.projKey = key;
-    for (let i = 0; i < RAIL_SEGMENTS.length; i++) {
-      let pts = this.proj[i];
-      if (!pts) { pts = []; this.proj[i] = pts; }
-      pts.length = 0;
-      for (const [lat, lon] of RAIL_SEGMENTS[i]) pts.push(f.cam.project(lat, lon));
-    }
-    for (let i = 0; i < TUNNEL_SPANS.length; i++) {
-      let pts = this.projTun[i];
-      if (!pts) { pts = []; this.projTun[i] = pts; }
-      pts.length = 0;
-      for (const [lat, lon] of TUNNEL_SPANS[i]) pts.push(f.cam.project(lat, lon));
-    }
+    projectPolys(f.cam, RAIL_SEGMENTS, this.proj, stride);
+    projectPolys(f.cam, TUNNEL_SPANS, this.projTun, stride);
   }
 
   draw(f: FrameContext): void {
@@ -141,6 +135,19 @@ export class RailLayer implements Layer {
       ctx.stroke();
     }
     ctx.restore();
+  }
+}
+
+// Project a list of [lat,lon] polylines into screen-space caches, taking every `stride`-th vertex
+// (always keeping each polyline's last point so segments don't visibly shorten). stride 1 = full.
+function projectPolys(cam: { project(lat: number, lon: number): Pt }, src: [number, number][][], out: Pt[][], stride: number): void {
+  for (let i = 0; i < src.length; i++) {
+    let pts = out[i];
+    if (!pts) { pts = []; out[i] = pts; }
+    pts.length = 0;
+    const s = src[i], n = s.length;
+    for (let k = 0; k < n; k += stride) pts.push(cam.project(s[k][0], s[k][1]));
+    if (n > 0 && (n - 1) % stride !== 0) pts.push(cam.project(s[n - 1][0], s[n - 1][1]));
   }
 }
 
