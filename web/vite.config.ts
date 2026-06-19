@@ -2,9 +2,11 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
 
-// Single entry point: the display app. The control panel is now an in-display drawer
-// (Display.tsx), so there's no separate control page. Built into the Go server's embed
-// directory so the binary is self-contained. Dev proxies /api and /ws to :3000.
+// MPA entry points: the kiosk `display` app (index.html) and the v6 `airport` view
+// (airport.html) — the graphically-heavier KSEA experience served to a PC/mobile client, kept a
+// SEPARATE bundle so the always-on display bundle stays lean (rollup splits shared chunks). The
+// control panel is an in-display drawer (Display.tsx), so there's no separate control page. Built
+// into the Go server's embed directory so the binary is self-contained. Dev proxies /api + /ws.
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -16,6 +18,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         display: resolve(__dirname, "index.html"),
+        airport: resolve(__dirname, "airport.html"),
       },
     },
   },

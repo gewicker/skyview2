@@ -197,6 +197,9 @@ func New(d Deps) http.Handler {
 			_, _ = w.Write(b)
 		}
 	}
+	// Pretty route for the v6 airport view (the bundle itself is dist/airport.html, also served
+	// directly by the file server below).
+	mux.HandleFunc("/airport", serveFile("airport.html"))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
 			serveFile("index.html")(w, r)

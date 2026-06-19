@@ -161,6 +161,13 @@ export class Renderer {
   dismissSpotlight(): void { this.spotDismissAt = performance.now(); }
   getView(): View { return this.view(); }
 
+  /** Project a lat/lon to current screen pixels (null before the first frame / no camera). Used by
+   *  the display to anchor the discreet airport-view entry affordance over the field. Read-only — it
+   *  reuses the last frame's camera and never mutates render state. */
+  projectLL(lat: number, lon: number): { x: number; y: number } | null {
+    return this.lastCam ? this.lastCam.project(lat, lon) : null;
+  }
+
   /** Nearest tappable static feature (navaid/fix/final) to a screen point, honoring
    *  the overlay toggles. Returns its id or null. Used for tap-to-reveal. */
   pickStatic(px: number, py: number): string | null {

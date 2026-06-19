@@ -6,6 +6,13 @@ Kickoff backlog for v6 (opened 2026-06-19). Repo `C:\skydeck\skyview2`; deploy v
 
 ## 1. Airport View — KSEA, headline feature  *(scope locked 2026-06-19)*
 
+**Status (2026-06-19, pending deploy):** Phase 1 shipped — a separate client bundle `airport.html`
+(`/airport` route, own Vite entry) renders a detailed **top-down KSEA** view (reuses the field
+geometry + live aircraft stream; ground traffic forced on). The kiosk/display app is the **doorway**:
+a discreet entry affordance over KSEA (hover on desktop, zoom-gated chip on touch, never on the kiosk)
+opens `/airport` in a new tab. See `docs/AIRPORT-VIEW-DESIGN.md` + `docs/AIRPORT-ENTRY-DESIGN.md`.
+Remaining: the WebGL out-the-window perspectives (phases 2–4 below).
+
 A dedicated **airport view** for **KSEA first** (richest diagram data we hold), built to extend to
 other fields later. Four coordinated vantages:
 

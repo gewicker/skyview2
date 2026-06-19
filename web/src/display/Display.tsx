@@ -41,6 +41,14 @@ import Control from "../control/Control";
 import { loadLocal, saveLocal, clearLocal } from "../lib/localConfig";
 import type { Aircraft, Config } from "@shared/types";
 
+// KSEA field reference (mean of its runway thresholds) — the anchor for the discreet airport-view
+// entry affordance. The map is the doorway to the (client-rendered) airport view; see
+// docs/AIRPORT-ENTRY-DESIGN.md.
+const SEA_AP = AIRPORTS.find((a) => a.iata === "SEA");
+const SEA_C = SEA_AP
+  ? (() => { let la = 0, lo = 0, n = 0; for (const rw of SEA_AP.runways) { la += rw.le[0] + rw.he[0]; lo += rw.le[1] + rw.he[1]; n += 2; } return { lat: la / n, lon: lo / n }; })()
+  : null;
+
 export default function Display() {
   const { state, conn } = useStream("display");
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -52,6 +60,12 @@ export default function Display() {
   const [transit, setTransit] = useState<TransitPick | null>(null); // tapped train/bus/station
   const [showSettings, setShowSettings] = useState(false);
   const [orbit, setOrbit] = useState({ x: 0, y: 0 }); // burn-in step offset (kiosk)
+  const [airportEntry, setAirportEntry] = useState<{ x: number; y: number } | null>(null); // KSEA door
+
+  // Hover-capable pointer? (desktop) → reveal the airport-view entry on hover; touch clients get a
+  // zoom-gated chip instead (the poll effect below). Never shown on the kiosk.
+  const canHover = typeof window !== "undefined" && !!window.matchMedia
+    && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 
   // On the Pi kiosk we launch with ?kiosk=1: hide the cursor entirely. On the web
   // we always keep the cursor visible.
@@ -171,6 +185,22 @@ export default function Display() {
     if (r && !r.onScreenTransit(transit)) { r.selectFerry(null); r.selectBus(null); setTransit(null); }
   }, [state.now, transit]);
 
+  // Touch clients (no hover): surface the airport-view entry over KSEA when the field is on-screen
+  // AND the map is zoomed in on it. Never on the kiosk (the Pi never runs the airport view). Desktop
+  // uses hover instead (in onMove), so this poll stands down there.
+  useEffect(() => {
+    if (isKiosk || canHover || !SEA_C) return;
+    const id = window.setInterval(() => {
+      const r = rendererRef.current, cv = canvasRef.current;
+      if (!r || !cv) return;
+      const s = r.projectLL(SEA_C.lat, SEA_C.lon);
+      const onScreen = !!s && s.x > 24 && s.x < cv.clientWidth - 24 && s.y > 24 && s.y < cv.clientHeight - 24;
+      const zoomed = (r.getView().mapZoom || 1) >= 3;
+      setAirportEntry(s && onScreen && zoomed ? { x: s.x, y: s.y } : null);
+    }, 333);
+    return () => clearInterval(id);
+  }, [isKiosk, canHover]);
+
   // Burn-in: step the canvas to a new offset every 25 s (CSS glides it over 5 s, then
   // the compositor goes idle) — far cheaper than a continuous animation on the Pi GPU.
   useEffect(() => {
@@ -233,6 +263,7 @@ export default function Display() {
 
   const onDown = (e: RPointerEvent) => {
     pokeUi();
+    setAirportEntry(null); // hide the entry door while interacting; it re-reveals on hover/idle
     canvasRef.current!.setPointerCapture(e.pointerId);
     const p = rel(e);
     ptrs.current.set(e.pointerId, p);
@@ -245,6 +276,13 @@ export default function Display() {
   };
   const onMove = (e: RPointerEvent) => {
     pokeUi(); // any pointer movement (hover or drag) keeps the controls visible
+    // Desktop hover: reveal the discreet airport-view entry when the cursor is over KSEA (web only,
+    // never kiosk, never mid-gesture). Purely additive — does not affect tap/pan below.
+    if (canHover && !isKiosk && SEA_C && !drag.current && ptrs.current.size === 0) {
+      const p = rel(e);
+      const s = rendererRef.current?.projectLL(SEA_C.lat, SEA_C.lon);
+      setAirportEntry(s && Math.hypot(s.x - p.x, s.y - p.y) < 42 ? { x: s.x, y: s.y } : null);
+    }
     if (!ptrs.current.has(e.pointerId)) return;
     const p = rel(e);
     ptrs.current.set(e.pointerId, p);
@@ -340,6 +378,7 @@ export default function Display() {
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onUp}
+        onPointerLeave={() => { if (canHover) setAirportEntry(null); }}
         onWheel={onWheel}
       />
       {!state.config && (
@@ -353,6 +392,24 @@ export default function Display() {
           onClose={() => { rendererRef.current?.select(null); rendererRef.current?.dismissSpotlight(); setSelected(null); }} />
       )}
       {transit && <TransitCard pick={transit} onClose={() => { setTransit(null); rendererRef.current?.selectFerry(null); rendererRef.current?.selectBus(null); }} />}
+
+      {/* Discreet doorway to the (client-rendered) airport view, anchored over KSEA. Web/mobile only —
+          never the kiosk; opens in a new tab so this map session is untouched. */}
+      {airportEntry && !isKiosk && (
+        <button
+          onClick={(e) => { e.stopPropagation(); window.open("/airport", "_blank", "noopener,noreferrer"); }}
+          title="Open the KSEA airport view (opens in a new tab)"
+          style={{
+            position: "absolute", left: airportEntry.x, top: Math.max(8, airportEntry.y - 40),
+            transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: 6,
+            padding: "6px 11px", borderRadius: 16, border: "0.5px solid rgba(255,255,255,0.18)",
+            background: "rgba(12,16,22,0.72)", color: "rgba(232,238,246,0.95)", font: "600 12px system-ui",
+            cursor: "pointer", whiteSpace: "nowrap", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.4)", zIndex: 15,
+          }}>
+          KSEA airport view <span style={{ opacity: 0.8 }}>↗</span>
+        </button>
+      )}
 
       {/* On-screen quick controls — auto-hide after inactivity. */}
       <div style={{ position: "absolute", right: 16, bottom: 16, display: "flex", flexDirection: "column", gap: 10, ...autoHide(uiVisible) }}>
