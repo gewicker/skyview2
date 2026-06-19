@@ -109,7 +109,7 @@ export class TrainLayer implements Layer {
       const ap = f.cam.project(t.alat, t.alon);
       const grad = ctx.createLinearGradient(ap.x, ap.y, p.x, p.y);
       grad.addColorStop(0, `rgba(${base},0)`);
-      grad.addColorStop(1, `rgba(${base},${0.55 * a})`);
+      grad.addColorStop(1, `rgba(${base},${0.6 * a})`);
       ctx.strokeStyle = grad;
       ctx.lineWidth = 2.8;
       ctx.beginPath();
@@ -118,8 +118,8 @@ export class TrainLayer implements Layer {
       ctx.stroke();
       // soft glow
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${base},${0.22 * a})`;
+      ctx.arc(p.x, p.y, 9, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${base},${0.28 * a})`;
       ctx.fill();
       // Oriented RAILCAR (capsule + lit window band) when moving; a measured bead when dwelling at
       // a platform (heading is unknown at a standstill). The window band carries an along-track
@@ -129,28 +129,31 @@ export class TrainLayer implements Layer {
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(Math.atan2(dy, dx));
-        const L = 13, r = 2.7, hx = L / 2 - r;
+        const L = 15, r = 3.0, hx = L / 2 - r;
         capsule(ctx, L, r);
-        ctx.fillStyle = `rgba(${base},${0.95 * a})`;
+        ctx.fillStyle = `rgba(${base},${0.98 * a})`;
         ctx.fill();
-        // lit window band (the measured core, stretched along the car)
-        ctx.fillStyle = `rgba(232,246,255,${(0.9 * a * cm).toFixed(3)})`;
-        ctx.fillRect(-hx, -0.9, hx * 2, 1.8);
+        ctx.strokeStyle = `rgba(6,14,22,${(0.55 * a).toFixed(3)})`; // crisp keyline — separates the car from the bright track + water
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        // lit window band — the brightest rail pixel (near-white reserved for the live train)
+        ctx.fillStyle = `rgba(236,248,255,${(1.0 * a * cm).toFixed(3)})`;
+        ctx.fillRect(-hx, -1.0, hx * 2, 2.0);
         // along-track shimmer gliding nose→tail
         const frac = (f.t * 0.5 + seedNum(t.id)) % 1;
         ctx.beginPath();
-        ctx.arc(-hx + 2 * hx * frac, 0, 1.5, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255,255,255,${(0.5 * a * cm).toFixed(3)})`;
+        ctx.arc(-hx + 2 * hx * frac, 0, 1.7, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,255,255,${(0.6 * a * cm).toFixed(3)})`;
         ctx.fill();
         ctx.restore();
       } else {
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${base},${0.95 * a})`;
+        ctx.arc(p.x, p.y, 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${base},${0.98 * a})`;
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(232,246,255,${(0.98 * a * cm).toFixed(3)})`;
+        ctx.arc(p.x, p.y, 2.2, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(236,248,255,${(1.0 * a * cm).toFixed(3)})`;
         ctx.fill();
       }
     }

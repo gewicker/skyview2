@@ -53,7 +53,7 @@ export class HighwayLayer implements Layer {
     const v = f.view;
     // Decimate while panning/zooming (stride 4 ≈ −75% projections per frame); full fidelity at rest.
     // stride is in the key so settling forces one clean full reproject. (perf: docs/PERF-GESTURE.md)
-    const stride = f.interacting ? 4 : 1;
+    const stride = f.interacting ? 6 : 1;
     // Everything Camera derives from: view centre/zoom + config rotation/mirror + screen size/dpr.
     const key = `${v.mapCenterLat},${v.mapCenterLon},${v.mapZoom},${f.cfg.mapRotationDeg},${f.cfg.mirrorX ? 1 : 0},${f.cfg.mirrorY ? 1 : 0},${f.w},${f.h},${f.dpr},${stride}`;
     if (key === this.projKey) return; // view unchanged → reuse cached screen coords
@@ -95,8 +95,9 @@ export class HighwayLayer implements Layer {
       this.drawFlowSeg(f, pts, this.segCong(this.flat[i].hw, this.flat[i].si), im);
     }
     ctx.setLineDash([]);
-    // Cars: street-zoom detail only — sub-perceptual at metro zoom, so faded in by carsVis.
-    if (this.carsVis > 0.01) {
+    // Cars: street-zoom detail only — sub-perceptual at metro zoom, so faded in by carsVis. Skipped
+    // entirely mid-gesture (they're fine detail you can't track while panning) — a real perf win.
+    if (this.carsVis > 0.01 && !f.interacting) {
       const carAlpha = 0.7 * intensity * this.carsVis;
       let budget = CAR_CAP;
       for (let i = 0; i < this.flat.length && budget > 0; i++) {
@@ -143,10 +144,14 @@ export class HighwayLayer implements Layer {
     const width = (1.2 + 3.3 * cong * cong) * this.widthMul; // squared → only bad stretches fatten
     const aCore = (0.12 + 0.43 * cong) * im * vis;
     // Soft glow under-stroke (wider, low alpha) so jams bloom off the dark map — no shadowBlur.
+    // Skipped mid-gesture: the doubled-width pass is the costliest stroke and the bloom isn't missed
+    // while panning (perf: docs/PERF-GESTURE.md).
     ctx.setLineDash([]);
-    ctx.lineWidth = width * 2;
-    ctx.strokeStyle = col(c, aCore * 0.25);
-    this.stroke(ctx, pts);
+    if (!f.interacting) {
+      ctx.lineWidth = width * 2;
+      ctx.strokeStyle = col(c, aCore * 0.25);
+      this.stroke(ctx, pts);
+    }
     // Core stroke. Warm/congested segments get a scrolling dash (denser when jammed); cool
     // segments stay solid (dashes on clear road = noise).
     ctx.lineWidth = width;

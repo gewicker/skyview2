@@ -62,20 +62,19 @@ export class Renderer {
   use(layer: Layer): void { this.layers.push(layer); }
 
   start(): void {
+    const GESTURE_FPS = 40; // pace gestures instead of running uncapped: on a Pi, uncapped just burns
+                            // the frame budget on heavy partial frames; a steady ~40fps reads smoother
+                            // and leaves headroom (perf: docs/PERF-INTERACT.md).
     const loop = (now: number) => {
       this.raf = requestAnimationFrame(loop);
       const interacting = now - this.lastInteractAt < 220;
-      if (interacting) {
-        this.nextDue = 0; // uncapped during a gesture (smooth pan on fast displays)
-      } else {
-        const fps = this.getConfig().maxFps;
-        if (fps > 0) {
-          const interval = 1000 / fps;
-          if (this.nextDue === 0) this.nextDue = now;
-          if (now < this.nextDue) return;
-          this.nextDue += interval;
-          if (now - this.nextDue > interval) this.nextDue = now + interval;
-        }
+      const fps = interacting ? GESTURE_FPS : this.getConfig().maxFps;
+      if (fps > 0) {
+        const interval = 1000 / fps;
+        if (this.nextDue === 0) this.nextDue = now;
+        if (now < this.nextDue) return;
+        this.nextDue += interval;
+        if (now - this.nextDue > interval) this.nextDue = now + interval;
       }
       this.draw(now, interacting);
     };

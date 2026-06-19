@@ -31,8 +31,8 @@ const TUNNEL_SPANS = buildTunnelSpans();
 const LINE = "rgba(40,225,170,";             // bright transit JADE (alpha appended) — more saturated and
                                              // brighter than the cool satellite grade, and clear of the
                                              // ~15k-ft altitude meadow-green trails, so it reads from a room away
-const LINE_HAIR = "rgba(150,240,200,0.9)";   // bright coaxial centerline — reads as lit infrastructure
-const STATION_RING = "rgba(40,225,170,0.95)"; // jade outline
+const LINE_HAIR = "rgba(120,215,180,0.55)";   // quiet coaxial centerline (receded so the train out-reads the line)
+const STATION_RING = "rgba(40,225,170,0.65)"; // jade outline (dimmed; the stop is a marker, not a glow)
 
 interface Pt { x: number; y: number }
 
@@ -49,7 +49,7 @@ export class RailLayer implements Layer {
     // Decimate the ~4,900-vertex geometry while panning/zooming (stride 4 ≈ −75% projections per
     // frame), snapping back to full fidelity the instant the gesture ends. The stride is part of the
     // cache key, so settling forces one clean full reproject. (perf: docs/PERF-GESTURE.md)
-    const stride = f.interacting ? 4 : 1;
+    const stride = f.interacting ? 6 : 1;
     const key = `${v.mapCenterLat},${v.mapCenterLon},${v.mapZoom},${f.cfg.mapRotationDeg},${f.cfg.mirrorX ? 1 : 0},${f.cfg.mirrorY ? 1 : 0},${f.w},${f.h},${f.dpr},${stride}`;
     if (key === this.projKey) return;
     this.projKey = key;
@@ -81,11 +81,13 @@ export class RailLayer implements Layer {
     for (let i = 0; i < this.proj.length; i++) {
       const pts = this.proj[i];
       if (pts.length < 2 || !onScreen(pts, w, h)) continue;
-      ctx.strokeStyle = LINE + "0.22)";   // wide soft glow — bloom without shadowBlur
-      ctx.lineWidth = 9 * wm;
-      stroke(ctx, pts);
-      ctx.strokeStyle = LINE + "0.95)";   // mid body
-      ctx.lineWidth = 2.6 * wm;
+      if (!f.interacting) {               // skip the wide soft-glow pass mid-gesture (perf)
+        ctx.strokeStyle = LINE + "0.14)";
+        ctx.lineWidth = 7 * wm;
+        stroke(ctx, pts);
+      }
+      ctx.strokeStyle = LINE + "0.72)";   // mid body
+      ctx.lineWidth = 2.4 * wm;
       stroke(ctx, pts);
       ctx.strokeStyle = LINE_HAIR;        // bright centerline inside the body
       ctx.lineWidth = 1 * wm;
@@ -109,18 +111,18 @@ export class RailLayer implements Layer {
         this.rings.push({ x: p.x, y: p.y, t0: f.t }); // a train just pulled in — fire one soft ring
         this.lastFire.set(s.name, f.t);
       }
-      ctx.beginPath();                                 // halo bloom (swells with nearby train)
-      ctx.arc(p.x, p.y, 7 * sr * (1 + 0.6 * prox), 0, Math.PI * 2);
-      ctx.fillStyle = LINE + (0.22 + 0.25 * prox).toFixed(3) + ")"; // lifted floor so it doesn't smudge over water
+      ctx.beginPath();                                 // halo bloom (breathes up on a real train's approach, peaks below the train)
+      ctx.arc(p.x, p.y, 6 * sr * (1 + 0.55 * prox), 0, Math.PI * 2);
+      ctx.fillStyle = LINE + (0.14 + 0.22 * prox).toFixed(3) + ")";
       ctx.fill();
       ctx.beginPath();                                 // stroked ring = a deliberate "stop" marker
-      ctx.arc(p.x, p.y, 5 * sr, 0, Math.PI * 2);
-      ctx.lineWidth = 1.6;
+      ctx.arc(p.x, p.y, 4.6 * sr, 0, Math.PI * 2);
+      ctx.lineWidth = 1.4;
       ctx.strokeStyle = STATION_RING;
       ctx.stroke();
-      ctx.beginPath();                                 // bright core landmark (night-dimmed with the room)
-      ctx.arc(p.x, p.y, 2.4 * sr, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(232,255,244,${(0.98 * coreDim()).toFixed(3)})`;
+      ctx.beginPath();                                 // core — dim jade-white (near-white is reserved for the moving train)
+      ctx.arc(p.x, p.y, 2.0 * sr, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(150,235,200,${(0.62 * coreDim()).toFixed(3)})`;
       ctx.fill();
     }
     // Arrival rings: a single slow expanding ring as a train reaches a station — a quiet "bell of
