@@ -15,11 +15,15 @@ const ARRIVAL_CUE_S = 1.2;
 const BREATH_HZ = 0.13;
 
 // One restrained, low-chroma family, clear of every other semantic hue (see palette doc).
-const CAT: Record<IncidentCat, { rgb: string; fill: number; ring: number; r: number; sev: number }> = {
-  major:   { rgb: "214,108,72",  fill: 0.55, ring: 0.85, r: 9,   sev: 3000 }, // muted ember — the only category granted extra presence
-  vehicle: { rgb: "198,156,96",  fill: 0.42, ring: 0.70, r: 7,   sev: 200 },  // earthy amber-tan
-  medical: { rgb: "150,140,180", fill: 0.32, ring: 0.58, r: 7,   sev: 20 },   // calm mauve-grey (NOT red — no scanner feel)
-  alarm:   { rgb: "128,142,158", fill: 0.26, ring: 0.50, r: 6.5, sev: 5 },    // near-basemap grey-blue
+// Presence comes from a SOLID disc + a bold dark keyline (contrast on teal), not from alpha on a
+// soft cloud (the design-consult lesson, docs/FIRE-EMS-VISIBILITY.md). `core` = flat disc alpha,
+// `ring` = hue lip alpha, `disc` = solid radius, `r` = outer halo radius. Still source-over, no
+// near-white core, drawn under all traffic — so the eye goes to aircraft first.
+const CAT: Record<IncidentCat, { rgb: string; core: number; ring: number; disc: number; r: number; sev: number }> = {
+  major:   { rgb: "224,116,76",  core: 0.62, ring: 0.95, disc: 8, r: 12, sev: 3000 }, // ember — the only category granted extra presence
+  vehicle: { rgb: "210,166,100", core: 0.50, ring: 0.85, disc: 7, r: 11, sev: 200 },  // earthy amber-tan
+  medical: { rgb: "162,150,196", core: 0.42, ring: 0.80, disc: 7, r: 11, sev: 20 },   // mauve-grey (NOT red — no scanner feel)
+  alarm:   { rgb: "138,152,170", core: 0.32, ring: 0.62, disc: 6, r: 10, sev: 5 },    // grey-blue, the dimmest
 };
 
 export class FireEmsLayer implements Layer {
@@ -52,6 +56,7 @@ export class FireEmsLayer implements Layer {
     const mz = f.view.mapZoom || 1;
     const zoomMul = Math.max(0.5, Math.min(1, 0.5 + 0.5 * ((mz - 0.6) / 0.4)));
     const cm = coreDim();
+    const nf = nightF();
 
     ctx.save();
     ctx.lineCap = "round";
@@ -59,39 +64,48 @@ export class FireEmsLayer implements Layer {
       const p = f.cam.project(inc.lat, inc.lon);
       if (p.x < -16 || p.x > w + 16 || p.y < -16 || p.y > h + 16) continue;
       const c = CAT[inc.cat];
-      const ageMin = (now - inc.time) / 60000;
+      const ageMin = (now - inc.firstSeen) / 60000; // time on screen (dispatch time lags ~30-60 min)
       // Lifetime fade: full for the first 30 min, smoothstep to 0 over the final 15.
       let life = 1;
       if (ageMin > FADE_START_MIN) { const u = Math.min(1, (ageMin - FADE_START_MIN) / (LIFETIME_MIN - FADE_START_MIN)); life = 1 - u * u * (3 - 2 * u); }
       const ageFrac = Math.min(1, ageMin / LIFETIME_MIN);
-      const a = life * (0.85 + 0.15 * (1 - ageFrac)) * cm * zoomMul; // recency reads as faint brightness
-      if (a <= 0.01) continue;
+      const vis = life * (0.85 + 0.15 * (1 - ageFrac)) * zoomMul; // presence factor (recency reads as faint brightness)
+      const dim = vis * cm; // hue elements also dim with the room at night
+      if (dim <= 0.01) continue;
       const breath = (inc.id === topFire && !muted) ? 0.86 + 0.14 * Math.sin(f.t * 2 * Math.PI * BREATH_HZ) : 1;
 
-      // Soft ground pool (radial gradient, source-over — never additive).
-      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, c.r);
-      g.addColorStop(0, `rgba(${c.rgb},${(c.fill * a * breath).toFixed(3)})`);
-      g.addColorStop(1, `rgba(${c.rgb},0)`);
-      ctx.fillStyle = g;
+      // Soft outer halo (source-over, never additive) — a gentle lift off the basemap.
+      const halo = ctx.createRadialGradient(p.x, p.y, c.disc * 0.5, p.x, p.y, c.r);
+      halo.addColorStop(0, `rgba(${c.rgb},${(0.22 * c.core * dim * breath).toFixed(3)})`);
+      halo.addColorStop(1, `rgba(${c.rgb},0)`);
+      ctx.fillStyle = halo;
       ctx.beginPath(); ctx.arc(p.x, p.y, c.r, 0, Math.PI * 2); ctx.fill();
 
-      const rr = c.r * 0.62;
-      // Dark keyline just inside the ring (separates the spot from the teal water).
-      ctx.strokeStyle = `rgba(8,14,22,${(0.5 * a).toFixed(3)})`;
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(p.x, p.y, rr - 1, 0, Math.PI * 2); ctx.stroke();
-      // Thin hue ring — the locus, no bright core.
-      ctx.strokeStyle = `rgba(${c.rgb},${(c.ring * a * breath).toFixed(3)})`;
-      ctx.beginPath(); ctx.arc(p.x, p.y, rr, 0, Math.PI * 2); ctx.stroke();
-      // Tiny inner mark (shape carries category for day/CVD legibility; same hue, no white).
-      drawMark(ctx, p.x, p.y, inc.cat, c.rgb, Math.min(0.95, c.ring * a + 0.1));
+      // Solid flat disc — the mass that reads at a glance (earth-tone, capped well below aircraft/transit whites).
+      ctx.fillStyle = `rgba(${c.rgb},${(c.core * dim * breath).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, c.disc, 0, Math.PI * 2); ctx.fill();
 
-      // One-time arrival ripple — a single raindrop, day only.
-      if (f.cfg.fireEmsArrivalCue && !muted) {
+      // Bold dark keyline ON the disc edge — contrast, not brightness, so it survives the teal water
+      // and keeps its rim even when dimmed overnight (gentle night floor, not full coreDim).
+      ctx.strokeStyle = `rgba(6,12,20,${(0.7 * vis * (0.85 + 0.15 * (1 - nf))).toFixed(3)})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(p.x, p.y, c.disc, 0, Math.PI * 2); ctx.stroke();
+
+      // Thin hue lip just outside the keyline — the crisp locus.
+      ctx.strokeStyle = `rgba(${c.rgb},${(c.ring * dim * breath).toFixed(3)})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(p.x, p.y, c.disc + 1.5, 0, Math.PI * 2); ctx.stroke();
+
+      // Inner category mark over the solid center (shape = category for day/CVD legibility).
+      drawMark(ctx, p.x, p.y, inc.cat, c.rgb, Math.min(0.98, c.ring * dim + 0.12));
+
+      // One-time arrival ripple — a single raindrop, day only, and only for a genuinely FRESH
+      // dispatch (so the initial load of a backlog of old-but-just-fetched incidents doesn't ripple).
+      if (f.cfg.fireEmsArrivalCue && !muted && (now - inc.time) / 60000 < 8) {
         const since = (now - inc.firstSeen) / 1000;
         if (since >= 0 && since < ARRIVAL_CUE_S) {
           const u = since / ARRIVAL_CUE_S;
-          ctx.strokeStyle = `rgba(${c.rgb},${(0.5 * (1 - u) * a).toFixed(3)})`;
+          ctx.strokeStyle = `rgba(${c.rgb},${(0.5 * (1 - u) * dim).toFixed(3)})`;
           ctx.lineWidth = 1.4;
           ctx.beginPath(); ctx.arc(p.x, p.y, c.r + u * c.r * 2.2, 0, Math.PI * 2); ctx.stroke();
         }
@@ -106,14 +120,14 @@ function drawMark(ctx: CanvasRenderingContext2D, x: number, y: number, cat: Inci
   if (cat === "alarm") return;
   ctx.strokeStyle = `rgba(${rgb},${a.toFixed(3)})`;
   ctx.fillStyle = `rgba(${rgb},${a.toFixed(3)})`;
-  ctx.lineWidth = 1.2;
+  ctx.lineWidth = 1.4;
   if (cat === "medical") {
-    ctx.beginPath(); ctx.moveTo(x - 2, y); ctx.lineTo(x + 2, y); ctx.moveTo(x, y - 2); ctx.lineTo(x, y + 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x - 2.5, y); ctx.lineTo(x + 2.5, y); ctx.moveTo(x, y - 2.5); ctx.lineTo(x, y + 2.5); ctx.stroke();
   } else if (cat === "vehicle") {
-    ctx.beginPath(); ctx.moveTo(x - 2, y + 1.6); ctx.lineTo(x + 2, y - 1.6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x - 2.5, y + 2); ctx.lineTo(x + 2.5, y - 2); ctx.stroke();
   } else { // major — a small upward flame notch
     ctx.beginPath();
-    ctx.moveTo(x, y - 2.6); ctx.lineTo(x + 1.8, y + 1.6); ctx.lineTo(x - 1.8, y + 1.6); ctx.closePath();
+    ctx.moveTo(x, y - 3.2); ctx.lineTo(x + 2.2, y + 2); ctx.lineTo(x - 2.2, y + 2); ctx.closePath();
     ctx.fill();
   }
 }

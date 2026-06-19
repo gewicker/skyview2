@@ -118,7 +118,8 @@ func (f *Fire) poll() {
 		radius = 30 // incidents are sparse civic texture — show the metro, not just <22 mi
 	}
 	now := time.Now()
-	cutoff := now.Add(-60 * time.Minute) // keep ~last hour; the client enforces the 45-min lifetime
+	cutoff := now.Add(-120 * time.Minute) // wide window — the SODA dataset lags real-time ~30-60 min;
+	// the client shows each incident for ~45 min from when it FIRST appears, not from dispatch time
 	out := make([]Incident, 0, 64)
 	for _, r := range raw {
 		lat, e1 := strconv.ParseFloat(r.Latitude, 64)

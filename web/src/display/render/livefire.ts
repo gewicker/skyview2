@@ -61,7 +61,9 @@ export function fireIncidents(): Incident[] {
   const now = Date.now();
   const out: Incident[] = [];
   for (const [id, inc] of incidents) {
-    if ((now - inc.time) / 60000 >= LIFETIME_MIN) { incidents.delete(id); continue; }
+    // Lifetime is measured from when we FIRST saw it (the SODA feed lags real-time by ~30-60 min, so
+    // dispatch time is already old on arrival; firstSeen keeps it visible a sensible while regardless).
+    if ((now - inc.firstSeen) / 60000 >= LIFETIME_MIN) { incidents.delete(id); continue; }
     out.push(inc);
   }
   return out;
