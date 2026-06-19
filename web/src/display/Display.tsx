@@ -22,6 +22,7 @@ import { RailLayer } from "./render/RailLayer";
 import { RailLineLayer } from "./render/RailLineLayer";
 import { TrainLayer } from "./render/TrainLayer";
 import { BusLayer } from "./render/BusLayer";
+import { BusRouteLayer } from "./render/BusRouteLayer";
 import { FerryLayer } from "./render/FerryLayer";
 import { FerryRouteLayer } from "./render/FerryRouteLayer";
 import { FireEmsLayer } from "./render/FireEmsLayer";
@@ -130,6 +131,7 @@ export default function Display() {
     r.use(new RailLayer());    // Link stations (live bloom + arrival rings) — over the baked ribbon
                                // (real infrastructure shouldn't be buried by the congestion ribbon),
                                // still below trains/aircraft (brightness law)
+    r.use(new BusRouteLayer()); // route shape for the tapped bus (under the beads) — on-tap reveal
     r.use(new BusLayer());     // live Metro + ST buses (OBA) — real transit, above the car wash, below trains
     r.use(new TrainLayer());   // Link trains (live OBA beads + timetable fallback; rides the rail toggle)
     r.use(new TrailLayer());
@@ -160,6 +162,14 @@ export default function Display() {
     const r = rendererRef.current;
     if (r && !r.onScreen(selected)) { r.select(null); setSelected(null); }
   }, [state.now, selected]);
+
+  // Same for the transit/incident card: despawn it when the tapped element drops from its feed
+  // (out of range) or is panned off-screen, so it can't linger over empty map (QA-BUGSCRUB P1).
+  useEffect(() => {
+    if (!transit) return;
+    const r = rendererRef.current;
+    if (r && !r.onScreenTransit(transit)) { r.selectFerry(null); r.selectBus(null); setTransit(null); }
+  }, [state.now, transit]);
 
   // Burn-in: step the canvas to a new offset every 25 s (CSS glides it over 5 s, then
   // the compositor goes idle) — far cheaper than a continuous animation on the Pi GPU.
@@ -263,12 +273,13 @@ export default function Display() {
         if (hex) {
           r.select(hex); setSelected(hex);
           r.selectNav(null); setSelectedNav(null);
-          setTransit(null); r.selectFerry(null);
+          setTransit(null); r.selectFerry(null); r.selectBus(null);
         } else {
           const tp = r.pickTransit(p.x, p.y); // a train/bus/station, before navaids
           if (tp) {
             setTransit(tp);
             r.selectFerry(tp.kind === "ferry" ? tp.id : null); // crossing lane for a tapped ferry
+            r.selectBus(tp.kind === "bus" ? tp.id : null);     // route shape for a tapped bus
             r.select(null); setSelected(null);
             r.selectNav(null); setSelectedNav(null);
             r.dismissSpotlight();
@@ -276,7 +287,7 @@ export default function Display() {
             const nid = r.pickStatic(p.x, p.y);
             r.selectNav(nid); setSelectedNav(nid);
             r.select(null); setSelected(null);
-            setTransit(null); r.selectFerry(null);
+            setTransit(null); r.selectFerry(null); r.selectBus(null);
             r.dismissSpotlight(); // tapping off a plane also drops the overhead card
           }
         }
@@ -341,7 +352,7 @@ export default function Display() {
         <TapCard a={sel} cfg={state.config}
           onClose={() => { rendererRef.current?.select(null); rendererRef.current?.dismissSpotlight(); setSelected(null); }} />
       )}
-      {transit && <TransitCard pick={transit} onClose={() => { setTransit(null); rendererRef.current?.selectFerry(null); }} />}
+      {transit && <TransitCard pick={transit} onClose={() => { setTransit(null); rendererRef.current?.selectFerry(null); rendererRef.current?.selectBus(null); }} />}
 
       {/* On-screen quick controls — auto-hide after inactivity. */}
       <div style={{ position: "absolute", right: 16, bottom: 16, display: "flex", flexDirection: "column", gap: 10, ...autoHide(uiVisible) }}>

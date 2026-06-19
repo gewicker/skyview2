@@ -58,6 +58,8 @@ export interface FrameContext {
   cardOpen?: boolean;
   /** The tapped ferry (vessel id) whose crossing lane the FerryRouteLayer draws, if any. */
   selectedFerryId?: number;
+  /** The tapped bus (vehicle id) whose route shape the BusRouteLayer draws, if any. */
+  selectedBusId?: string;
 }
 
 // A render layer. GL-ready by design: a layer can later swap its draw() to a WebGL

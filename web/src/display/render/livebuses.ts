@@ -40,6 +40,7 @@ interface Veh {
 }
 
 export interface LiveBus {
+  id: string;
   lat: number; lon: number;
   alat: number; alon: number;
   fade: number;
@@ -200,7 +201,7 @@ export function tickLiveBuses(dt: number): void {
 export function liveBuses(): LiveBus[] {
   const now = Date.now();
   const out: LiveBus[] = [];
-  for (const v of vehicles.values()) {
+  for (const [id, v] of vehicles) {
     const age = (now - v.lastSeen) / 1000;
     const fade = age <= STALE_S ? 1 : age >= DROP_S ? 0 : 1 - (age - STALE_S) / (DROP_S - STALE_S);
     if (fade <= 0) continue;
@@ -214,7 +215,16 @@ export function liveBuses(): LiveBus[] {
       const tp = posAt(v.ln, ts);
       alat = tp.lat; alon = tp.lon;
     }
-    out.push({ lat, lon, alat, alon, fade, route: v.route, headsign: v.headsign, rapidRide: isRapidRide(v.route), waterTaxi: v.waterTaxi });
+    out.push({ id, lat, lon, alat, alon, fade, route: v.route, headsign: v.headsign, rapidRide: isRapidRide(v.route), waterTaxi: v.waterTaxi });
   }
   return out;
+}
+
+/** The decoded route polyline (lat/lon points) for a tapped bus's CURRENT trip shape, or null when
+ *  it has no usable shape (velocity-fallback buses, or a shape that hasn't arrived in a poll yet).
+ *  Drives BusRouteLayer's on-tap route reveal — the bus-equivalent of FerryRouteLayer. */
+export function busShapePath(id: string): { lat: number; lon: number }[] | null {
+  const v = vehicles.get(id);
+  if (!v || !v.ln || v.ln.path.length < 2) return null;
+  return v.ln.path.map((p) => ({ lat: p.lat, lon: p.lon }));
 }

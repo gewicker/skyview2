@@ -15,8 +15,8 @@ import type { Aircraft, Config } from "@shared/types";
 // A tapped transit element (train / bus / station / ferry) — drives the transit detail card.
 export type TransitPick =
   | { kind: "station"; title: string }
-  | { kind: "train"; line: string; devSec: number }
-  | { kind: "bus"; route: string; headsign: string }
+  | { kind: "train"; id: string; line: string; devSec: number }
+  | { kind: "bus"; id: string; route: string; headsign: string }
   | { kind: "ferry"; id: number; title: string; route: string; atDock: boolean; speed: number }
   | { kind: "fire"; id: string; title: string; address: string; time: number };
 
@@ -46,6 +46,7 @@ export class Renderer {
   private spotDismissAt = 0;                  // last "dismiss overhead card" tap
   private cardOpen = false;                   // a DOM detail card (aircraft/transit) is open
   private selectedFerryId = 0;                // tapped ferry → draw its crossing lane (0 = none)
+  private selectedBusId = "";                 // tapped bus → draw its route shape ("" = none)
   private releaseTimer = 0;
   private lastInteractAt = 0;                // for the uncap + low-detail window
 
@@ -154,6 +155,8 @@ export class Renderer {
   setCardOpen(open: boolean): void { this.cardOpen = open; }
   /** The tapped ferry whose crossing lane the FerryRouteLayer draws (null clears it). */
   selectFerry(id: number | null): void { this.selectedFerryId = id || 0; }
+  /** The tapped bus whose route shape the BusRouteLayer draws (null clears it). */
+  selectBus(id: string | null): void { this.selectedBusId = id || ""; }
   /** Dismiss the auto overhead (spotlight) card for whoever is featured right now. */
   dismissSpotlight(): void { this.spotDismissAt = performance.now(); }
   getView(): View { return this.view(); }
@@ -181,11 +184,11 @@ export class Renderer {
       if (d < bestD) { bestD = d; best = make(); }
     };
     if (cfg.showRail) {
-      for (const t of liveTrains()) consider(t.lat, t.lon, () => ({ kind: "train", line: t.line, devSec: t.devSec }));
+      for (const t of liveTrains()) consider(t.lat, t.lon, () => ({ kind: "train", id: t.id, line: t.line, devSec: t.devSec }));
       for (const s of RAIL_STATIONS) consider(s.lat, s.lon, () => ({ kind: "station", title: s.name }));
     }
     if (cfg.showBuses) {
-      for (const b of liveBuses()) consider(b.lat, b.lon, () => ({ kind: "bus", route: b.route, headsign: b.headsign }));
+      for (const b of liveBuses()) consider(b.lat, b.lon, () => ({ kind: "bus", id: b.id, route: b.route, headsign: b.headsign }));
     }
     if (cfg.showFerries) {
       for (const fr of liveFerries()) consider(fr.lat, fr.lon, () => ({ kind: "ferry", id: fr.id, title: fr.name, route: fr.route, atDock: fr.atDock, speed: fr.speed }));
@@ -203,6 +206,26 @@ export class Renderer {
     const a = this.lastVisible.find((x) => x.hex === hex);
     if (!a) return false; // gone from the feed (out of range)
     const p = this.lastCam.project(a.lat, a.lon);
+    const m = 40;
+    return p.x >= -m && p.x <= this.w + m && p.y >= -m && p.y <= this.h + m;
+  }
+
+  /** Is the tapped transit element still present AND within (a margin of) the viewport? Mirrors
+   *  onScreen() for aircraft so the transit/incident card auto-despawns when the element drops from
+   *  its feed (out of range) or is panned off-screen (QA-BUGSCRUB P1). A station is static so it can
+   *  only despawn by being panned away; a live vehicle/incident despawns on either. */
+  onScreenTransit(pick: TransitPick): boolean {
+    if (!this.lastCam) return true;
+    let pos: { lat: number; lon: number } | undefined;
+    switch (pick.kind) {
+      case "station": pos = RAIL_STATIONS.find((s) => s.name === pick.title); break;
+      case "train":   pos = liveTrains().find((t) => t.id === pick.id); break;
+      case "bus":     pos = liveBuses().find((b) => b.id === pick.id); break;
+      case "ferry":   pos = liveFerries().find((v) => v.id === pick.id); break;
+      case "fire":    pos = fireIncidents().find((i) => i.id === pick.id); break;
+    }
+    if (!pos) return false; // gone from its feed (out of range / cleared)
+    const p = this.lastCam.project(pos.lat, pos.lon);
     const m = 40;
     return p.x >= -m && p.x <= this.w + m && p.y >= -m && p.y <= this.h + m;
   }
@@ -257,6 +280,7 @@ export class Renderer {
       spotDismissAt: this.spotDismissAt || undefined, interacting,
       cardOpen: this.cardOpen || undefined,
       selectedFerryId: this.selectedFerryId || undefined,
+      selectedBusId: this.selectedBusId || undefined,
     };
     for (const l of this.layers) l.draw(f);
   }
