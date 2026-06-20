@@ -92,4 +92,18 @@ This experience is **graphically heavy** and will **NOT render on the Pi's IPS k
   destination ring) + new `busAhead()` in livebuses. Design in `docs/BUS-ROUTE-DESIGN.md`. Phase-2
   (next-stop beads, GTFS `route_color`) still needs an OBA stops proxy.
 
+## Known issues
+- ~~**Ferry motion stutters / starts-and-stops**~~ — **FIXED 2026-06-19 (pending deploy).**
+  `liveferries.ts` now estimates each vessel's own velocity from successive fixes and dead-reckons the
+  target forward between the ~15 s polls (mirrors the bus velocity-glide), so it glides continuously
+  instead of easing-then-stalling. Stays on-water (follows the boat's recent course, not a terminal
+  chord); velocity zeros at dock and decays when the feed goes quiet. One-file change.
+- **Rail direction-of-travel:** design expert says DON'T animate the line — the moving trains already
+  carry direction; see `docs/RAIL-DIRECTION-DESIGN.md` (optional per-train nose cue or on-tap
+  bus-style flow only, never an ambient line animation).
+
+**Not added — needs external inputs:** King County / Eastside Fire-EMS. The fire feed
+(`internal/feed/fire.go`) is **Seattle-only** (keyless Seattle SODA 911). KC/Eastside (Bellevue,
+Redmond, Kent…) has no keyless feed — PulsePoint needs an agency partnership (v5 backlog #5).
+
 **Hardware-blocked:** FIS-B off-air weather (needs a 978 MHz UAT SDR).
