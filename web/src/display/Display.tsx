@@ -26,6 +26,7 @@ import { BusRouteLayer } from "./render/BusRouteLayer";
 import { FerryLayer } from "./render/FerryLayer";
 import { FerryRouteLayer } from "./render/FerryRouteLayer";
 import { FireEmsLayer } from "./render/FireEmsLayer";
+import { HelipadLayer } from "./render/HelipadLayer";
 import { classifyIncident } from "./render/livefire";
 import { AIRPORTS } from "./render/airports";
 import { LeaderLayer } from "./render/LeaderLayer";
@@ -139,6 +140,7 @@ export default function Display() {
     r.use(new NavaidLayer());    // VOR roses / fixes (under traffic), off by default
     r.use(new StaticOverlayLayer([new PlaceLabelsLayer()], (f) => f.cfg.mapStyle));
     r.use(new MarineLayer());  // coastal fog (weather) — under the traffic, off by default
+    r.use(new HelipadLayer()); // hospital medevac heliports (Harborview WA53) — zoom-revealed ground furniture
     r.use(new FireEmsLayer()); // live Fire/EMS 911 incidents — subordinate ground markers, under all traffic
     r.use(new HighwayLayer()); // synthetic road traffic (ambient) — above fog, off by default
     r.use(new FerryRouteLayer()); // dep→arr crossing lane for the tapped ferry (under the hull)
