@@ -71,8 +71,3 @@ export function classifyNotable(a: AC): NotableCat | null {
   if (a.category === "A5" || (t && HEAVY.has(t))) return "heavy";
   return null;
 }
-
-// Back-compat for any old import.
-export const NOTABLE_COLOR: Record<NotableCat, RGB> = Object.fromEntries(
-  Object.entries(NOTABLE_STYLE).map(([k, v]) => [k, v.color]),
-) as Record<NotableCat, RGB>;

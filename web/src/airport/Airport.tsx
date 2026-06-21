@@ -16,16 +16,12 @@ import { TrailLayer } from "../display/render/TrailLayer";
 import { LeaderLayer } from "../display/render/LeaderLayer";
 import { AircraftLayer } from "../display/render/AircraftLayer";
 import { AtmosphereLayer } from "../display/render/AtmosphereLayer";
-import { KSEA } from "../display/render/airports";
+import { KSEA, fieldCenter } from "../display/render/airports";
 import type { Config } from "@shared/types";
 
-// KSEA field reference point = mean of all six runway thresholds (data, not a magic constant).
-function kseaCenter(): { lat: number; lon: number } {
-  let la = 0, lo = 0, n = 0;
-  for (const rw of KSEA.runways) { la += rw.le[0] + rw.he[0]; lo += rw.le[1] + rw.he[1]; n += 2; }
-  return { lat: la / n, lon: lo / n };
-}
-const KC = kseaCenter();
+// KSEA field reference point = mean of its runway thresholds (data, not a magic constant); the
+// fallback guards against a NaN center blanking the whole view if the field ever had no runways.
+const KC = fieldCenter(KSEA) ?? { lat: 47.4502, lon: -122.3088 };
 const FIELD_ZOOM = 6; // mapZoom → ~2.7 mi screen span: frames the three-runway field with margin
 
 export default function Airport() {

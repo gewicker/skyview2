@@ -101,6 +101,12 @@ This experience is **graphically heavy** and will **NOT render on the Pi's IPS k
 - **Rail direction-of-travel:** design expert says DON'T animate the line — the moving trains already
   carry direction; see `docs/RAIL-DIRECTION-DESIGN.md` (optional per-train nose cue or on-tap
   bus-style flow only, never an ambient line animation).
+- **Aircraft data labels "pop" in congested areas** (reported 2026-06-19, diagnosed, NOT yet
+  implemented). Root cause: label membership + placement recomputed every frame with no hysteresis —
+  hard top-K slice churns rank near the cutoff, adaptive-K step cliffs, leader side flips at the
+  screen midline, anti-overlap reflow snaps. Fix (in `docs/AIRCRAFT-LABEL-DESIGN.md`): P0 held
+  membership (+~4s hold, cap K+2) + ~200ms fade; P1 leader-side dead-band + eased reflow; P2 pixel
+  rounding. Owner is holding implementation for now.
 
 **Not added — needs external inputs:** King County / Eastside Fire-EMS. The fire feed
 (`internal/feed/fire.go`) is **Seattle-only** (keyless Seattle SODA 911). KC/Eastside (Bellevue,

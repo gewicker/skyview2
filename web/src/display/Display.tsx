@@ -28,7 +28,7 @@ import { FerryRouteLayer } from "./render/FerryRouteLayer";
 import { FireEmsLayer } from "./render/FireEmsLayer";
 import { HelipadLayer } from "./render/HelipadLayer";
 import { classifyIncident } from "./render/livefire";
-import { AIRPORTS } from "./render/airports";
+import { AIRPORTS, fieldCenter } from "./render/airports";
 import { LeaderLayer } from "./render/LeaderLayer";
 import { AircraftLayer } from "./render/AircraftLayer";
 import { SpotlightLayer } from "./render/SpotlightLayer";
@@ -46,9 +46,7 @@ import type { Aircraft, Config } from "@shared/types";
 // entry affordance. The map is the doorway to the (client-rendered) airport view; see
 // docs/AIRPORT-ENTRY-DESIGN.md.
 const SEA_AP = AIRPORTS.find((a) => a.iata === "SEA");
-const SEA_C = SEA_AP
-  ? (() => { let la = 0, lo = 0, n = 0; for (const rw of SEA_AP.runways) { la += rw.le[0] + rw.he[0]; lo += rw.le[1] + rw.he[1]; n += 2; } return { lat: la / n, lon: lo / n }; })()
-  : null;
+const SEA_C = SEA_AP ? fieldCenter(SEA_AP) : null;
 const FIELD_ENTRY_ZOOM = 3; // touch: only surface the doorway once the map is zoomed in on the field
 
 export default function Display() {
@@ -732,7 +730,11 @@ function delayText(devSec: number): string {
   return devSec > 0 ? m + " min late" : m + " min early";
 }
 function agoText(t: number): string {
-  const m = Math.round((Date.now() - t) / 60000);
+  // Guard a missing/garbage server timestamp (absent/zero/future) so the card never shows a nonsense
+  // "29000000 min ago" (bug scrub v6 P1-4). Only render an age for a plausible recent past.
+  const ms = Date.now() - t;
+  if (!(t > 0) || ms < -60000 || ms > 36 * 3600 * 1000) return "";
+  const m = Math.round(ms / 60000);
   if (m <= 0) return "just now";
   return m === 1 ? "1 min ago" : m + " min ago";
 }
@@ -750,9 +752,9 @@ function localArrival(a: Aircraft): { code: string; name: string; lat: number; l
   if (!m) return null;
   const ap = AIRPORTS.find((x) => x.iata === m.iata);
   if (!ap) return null;
-  let la = 0, lo = 0, n = 0;
-  for (const rw of ap.runways) { la += rw.le[0] + rw.he[0]; lo += rw.le[1] + rw.he[1]; n += 2; }
-  return { code: ap.iata, name: ap.name, lat: la / n, lon: lo / n };
+  const c = fieldCenter(ap);
+  if (!c) return null;
+  return { code: ap.iata, name: ap.name, lat: c.lat, lon: c.lon };
 }
 function haversine(la1: number, lo1: number, la2?: number, lo2?: number): number | null {
   if (la2 == null || lo2 == null) return null;

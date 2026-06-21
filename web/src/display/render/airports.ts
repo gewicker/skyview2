@@ -63,6 +63,15 @@ export const KPAE: Airport = {
 
 export const AIRPORTS: Airport[] = [KSEA, KBFI, KRNT, KPAE];
 
+// Field reference point = mean of a field's runway thresholds. Returns null for a field with no
+// runways (e.g. a future heliport/pad data entry) so callers never divide by zero and feed a NaN
+// lat/lon into the camera — a NaN map center blanks the whole view (bug scrub v6 P1-2).
+export function fieldCenter(ap: Airport): { lat: number; lon: number } | null {
+  let la = 0, lo = 0, n = 0;
+  for (const rw of ap.runways) { la += rw.le[0] + rw.he[0]; lo += rw.le[1] + rw.he[1]; n += 2; }
+  return n > 0 ? { lat: la / n, lon: lo / n } : null;
+}
+
 // Installed approach + runway lighting per runway END (current FAA cycle). Keyed by ICAO then
 // the end ident (matches Runway.leIdent / heIdent). Used by NightLightsLayer to draw an
 // aviation-accurate night scene: the right approach light system per end, REIL strobes,

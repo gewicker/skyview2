@@ -221,14 +221,6 @@ export function liveBuses(): LiveBus[] {
   return out;
 }
 
-/** The decoded route polyline (lat/lon points) for a tapped bus's CURRENT trip shape, or null when
- *  it has no usable shape (velocity-fallback buses, or a shape that hasn't arrived in a poll yet). */
-export function busShapePath(id: string): { lat: number; lon: number }[] | null {
-  const v = vehicles.get(id);
-  if (!v || !v.ln || v.ln.path.length < 2) return null;
-  return v.ln.path.map((p) => ({ lat: p.lat, lon: p.lon }));
-}
-
 /** The road AHEAD for a tapped bus: the slice of its trip shape from the bus's current arc-length
  *  position to the destination terminus (in the travel direction), starting at the exact bus point.
  *  This is what BusRouteLayer draws — the bus-space twin of the aircraft destination great-circle

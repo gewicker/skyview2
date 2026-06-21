@@ -29,6 +29,7 @@ interface Veh {
   s: number;                    // arc-length position (m)
   sTarget: number;              // arc-length of the last accepted on-line fix
   dir: 1 | -1;                  // travel direction along the path (+1 toward the high-index terminus)
+  dirKnown: boolean;            // have two fixes established `dir`? until then we DON'T dead-reckon
   sVel: number;                 // estimated speed (m/s) from consecutive fixes — drives prediction
   hasFix: boolean;              // got >=1 accepted on-line fix
   lastFixS: number;             // previous accepted fix s (for speed/direction)
@@ -81,7 +82,7 @@ export function startLiveTrains(): void {
             v = {
               line: m.line, lat: m.lat, lon: m.lon, alat: m.lat, alon: m.lon,
               tLat: m.lat, tLon: m.lon, devSec: m.devSec, lastSeen: now,
-              ln: LINE_BY_ID.get(m.line) ?? null, s: 0, sTarget: 0, dir: 1, sVel: 0,
+              ln: LINE_BY_ID.get(m.line) ?? null, s: 0, sTarget: 0, dir: 1, dirKnown: false, sVel: 0,
               hasFix: false, lastFixS: 0, lastFixAt: 0,
             };
             vehicles.set(m.id, v);
@@ -100,7 +101,7 @@ export function startLiveTrains(): void {
                 const dtFix = (now - v.lastFixAt) / 1000;
                 if (dtFix > 0.5) {
                   const ds = pr.s - v.lastFixS;
-                  if (Math.abs(ds) > DIR_EPS) v.dir = ds >= 0 ? 1 : -1;
+                  if (Math.abs(ds) > DIR_EPS) { v.dir = ds >= 0 ? 1 : -1; v.dirKnown = true; }
                   const est = Math.min(SPD_MAX, Math.abs(ds) / dtFix);
                   v.sVel = v.sVel > 0 ? v.sVel + (est - v.sVel) * 0.5 : est; // smoothed
                 }
@@ -161,6 +162,7 @@ export function tickLiveTrains(dt: number): void {
       // over a portal — the exact failure the underground feature exists to prevent.
       let spd = v.sVel;
       if (submerged && spd < 1) spd = paceVel(v.ln, v.s);
+      if (!v.dirKnown) spd = 0; // direction not yet established (e.g. acquired mid-tunnel) → hold, don't guess
       v.s += v.dir * spd * Math.max(0, dt);
       if (v.s < 0) v.s = 0; else if (v.s > total) v.s = total;
     }

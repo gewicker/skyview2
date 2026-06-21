@@ -20,6 +20,16 @@ export default defineConfig({
         display: resolve(__dirname, "index.html"),
         airport: resolve(__dirname, "airport.html"),
       },
+      output: {
+        // Split the large STATIC geometry blobs (rail/airport-diagram/highway data) and the airport
+        // app subtree into their own named, content-hashed chunks so they cache independently of the
+        // frequently-changing app code, and the chunk graph is explicit (supports the planned
+        // Renderer decoupling — see docs/V6-ARCHITECTURE-PLAN.md). Pure-data modules, no cycles.
+        manualChunks(id) {
+          if (/\/render\/(rail|airportDiagram|highways)\.ts$/.test(id)) return "geo-data";
+          if (/\/src\/airport\//.test(id)) return "airport-app";
+        },
+      },
     },
   },
   server: {
