@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as RPointerEvent, WheelEvent as RWheelEvent } from "react";
 import { useStream } from "../lib/useStream";
 import { Renderer, type TransitPick } from "./render/Renderer";
+import { transitHitTest } from "./render/transitHitTest";
 import { MapLayer } from "./render/MapLayer";
 import { AirportsLayer } from "./render/AirportsLayer";
 import { AirportDiagramLayer } from "./render/AirportDiagramLayer";
@@ -125,6 +126,7 @@ export default function Display() {
   useEffect(() => {
     if (!canvasRef.current) return;
     const r = new Renderer(canvasRef.current, () => cfgRef.current as Config);
+    r.setTransitHitTest(transitHitTest); // inject transit tap-to-reveal (kiosk/display only)
     r.use(new MapLayer());
     r.use(new RadarLayer());   // precip radar (weather) — translucent tint on the ground, off by default
     // Static airport geometry (taxiways/aprons/buildings + runways) baked into one cached

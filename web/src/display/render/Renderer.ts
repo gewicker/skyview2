@@ -4,21 +4,13 @@
 import { Camera, llToWorld, worldToLL } from "./mercator";
 import { TrackStore } from "./TrackStore";
 import { pickStatic } from "./navdata";
-import { liveTrains } from "./livetrains";
-import { liveBuses } from "./livebuses";
-import { liveFerries } from "./liveferries";
-import { fireIncidents } from "./livefire";
-import { RAIL_STATIONS } from "./rail";
-import type { Layer, Visible } from "./types";
+import type { Layer, Visible, TransitPick, TransitHitTest } from "./types";
 import type { Aircraft, Config } from "@shared/types";
 
-// A tapped transit element (train / bus / station / ferry) — drives the transit detail card.
-export type TransitPick =
-  | { kind: "station"; title: string }
-  | { kind: "train"; id: string; line: string; devSec: number }
-  | { kind: "bus"; id: string; route: string; headsign: string }
-  | { kind: "ferry"; id: number; title: string; route: string; atDock: boolean; speed: number }
-  | { kind: "fire"; id: string; title: string; address: string; time: number };
+// NOTE: the render core deliberately imports NO transit feature modules (rail/bus/ferry/fire). Transit
+// tap-to-reveal is injected via setTransitHitTest() so the airport bundle (which never registers one)
+// stays free of the transit geometry. `TransitPick` now lives in ./types. See docs/V6-ARCHITECTURE-PLAN.md.
+export type { TransitPick }; // re-export the imported type for back-compat with existing importers
 
 const MILE_M = 1609.34;
 
@@ -48,6 +40,7 @@ export class Renderer {
   private cardOpen = false;                   // a DOM detail card (aircraft/transit) is open
   private selectedFerryId = 0;                // tapped ferry → draw its crossing lane (0 = none)
   private selectedBusId = "";                 // tapped bus → draw its route shape ("" = none)
+  private transit?: TransitHitTest;           // injected transit hit-test (display only; airport leaves it unset)
   private releaseTimer = 0;
   private lastInteractAt = 0;                // for the uncap + low-detail window
 
@@ -164,6 +157,9 @@ export class Renderer {
   /** Dismiss the auto overhead (spotlight) card for whoever is featured right now. */
   dismissSpotlight(): void { this.spotDismissAt = performance.now(); }
   getView(): View { return this.view(); }
+  /** Inject the transit tap-to-reveal hit-test (keeps the core free of the transit feeds). The
+   *  airport surface never calls this, so it never pulls the transit geometry. */
+  setTransitHitTest(t: TransitHitTest): void { this.transit = t; }
 
   /** Project a lat/lon to current screen pixels (null before the first frame / no camera). Used by
    *  the display to anchor the discreet airport-view entry affordance over the field. Read-only — it
@@ -182,32 +178,11 @@ export class Renderer {
   }
 
   /** Nearest tappable transit element (live train, live bus, or rail station) to a screen point,
-   *  honoring the rail/bus toggles. Returns a snapshot for the detail card, or null. */
+   *  honoring the rail/bus toggles. Delegates to the injected hit-test (null if none registered). */
   pickTransit(px: number, py: number): TransitPick | null {
-    if (!this.lastCam) return null;
+    if (!this.lastCam || !this.transit) return null;
     const cam = this.lastCam;
-    const cfg = this.getConfig();
-    let best: TransitPick | null = null;
-    let bestD = 28 * 28; // tap radius (px²) — forgiving for small transit markers
-    const consider = (lat: number, lon: number, make: () => TransitPick) => {
-      const p = cam.project(lat, lon);
-      const d = (p.x - px) ** 2 + (p.y - py) ** 2;
-      if (d < bestD) { bestD = d; best = make(); }
-    };
-    if (cfg.showRail) {
-      for (const t of liveTrains()) consider(t.lat, t.lon, () => ({ kind: "train", id: t.id, line: t.line, devSec: t.devSec }));
-      for (const s of RAIL_STATIONS) consider(s.lat, s.lon, () => ({ kind: "station", title: s.name }));
-    }
-    if (cfg.showBuses) {
-      for (const b of liveBuses()) consider(b.lat, b.lon, () => ({ kind: "bus", id: b.id, route: b.route, headsign: b.headsign }));
-    }
-    if (cfg.showFerries) {
-      for (const fr of liveFerries()) consider(fr.lat, fr.lon, () => ({ kind: "ferry", id: fr.id, title: fr.name, route: fr.route, atDock: fr.atDock, speed: fr.speed }));
-    }
-    if (cfg.showFireEms) {
-      for (const inc of fireIncidents()) consider(inc.lat, inc.lon, () => ({ kind: "fire", id: inc.id, title: inc.type, address: inc.address, time: inc.time }));
-    }
-    return best;
+    return this.transit.pick((lat, lon) => cam.project(lat, lon), px, py, this.getConfig());
   }
 
   /** Is this aircraft still tracked AND within (a margin of) the viewport? Used to
@@ -227,15 +202,8 @@ export class Renderer {
    *  only despawn by being panned away; a live vehicle/incident despawns on either. */
   onScreenTransit(pick: TransitPick): boolean {
     if (!this.lastCam) return true;
-    let pos: { lat: number; lon: number } | undefined;
-    switch (pick.kind) {
-      case "station": pos = RAIL_STATIONS.find((s) => s.name === pick.title); break;
-      case "train":   pos = liveTrains().find((t) => t.id === pick.id); break;
-      case "bus":     pos = liveBuses().find((b) => b.id === pick.id); break;
-      case "ferry":   pos = liveFerries().find((v) => v.id === pick.id); break;
-      case "fire":    pos = fireIncidents().find((i) => i.id === pick.id); break;
-    }
-    if (!pos) return false; // gone from its feed (out of range / cleared)
+    const pos = this.transit?.resolve(pick);
+    if (!pos) return false; // gone from its feed (out of range / cleared), or no provider
     const p = this.lastCam.project(pos.lat, pos.lon);
     const m = 40;
     return p.x >= -m && p.x <= this.w + m && p.y >= -m && p.y <= this.h + m;

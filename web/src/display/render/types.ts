@@ -71,3 +71,22 @@ export interface Layer {
   readonly name: string;
   draw(f: FrameContext): void;
 }
+
+// A tapped transit element (train / bus / station / ferry / fire) — drives the transit detail card.
+export type TransitPick =
+  | { kind: "station"; title: string }
+  | { kind: "train"; id: string; line: string; devSec: number }
+  | { kind: "bus"; id: string; route: string; headsign: string }
+  | { kind: "ferry"; id: number; title: string; route: string; atDock: boolean; speed: number }
+  | { kind: "fire"; id: string; title: string; address: string; time: number };
+
+// Pluggable transit hit-testing. The render CORE (Renderer) stays free of the transit feature
+// modules (rail/bus/ferry/fire stores) — a surface that wants transit tap-to-reveal injects an
+// implementation via Renderer.setTransitHitTest(); a surface that doesn't (the airport view) simply
+// never registers one, so its bundle never pulls the transit geometry. See docs/V6-ARCHITECTURE-PLAN.md.
+export interface TransitHitTest {
+  /** Nearest tappable transit element to a screen point, honoring the feed toggles, or null. */
+  pick(project: (lat: number, lon: number) => { x: number; y: number }, px: number, py: number, cfg: Config): TransitPick | null;
+  /** The current position of a previously-picked element, or null if it has dropped from its feed. */
+  resolve(pick: TransitPick): { lat: number; lon: number } | null;
+}

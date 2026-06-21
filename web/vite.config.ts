@@ -21,12 +21,14 @@ export default defineConfig({
         airport: resolve(__dirname, "airport.html"),
       },
       output: {
-        // Split the large STATIC geometry blobs (rail/airport-diagram/highway data) and the airport
-        // app subtree into their own named, content-hashed chunks so they cache independently of the
-        // frequently-changing app code, and the chunk graph is explicit (supports the planned
-        // Renderer decoupling — see docs/V6-ARCHITECTURE-PLAN.md). Pure-data modules, no cycles.
+        // Split the large STATIC geometry blobs into named, content-hashed chunks so they cache
+        // independently and the chunk graph is explicit. DISPLAY-ONLY transit/highway geometry is
+        // kept separate from the airport-diagram geometry (which the airport view DOES use): now that
+        // the Renderer core no longer imports the transit feeds (see docs/V6-ARCHITECTURE-PLAN.md),
+        // the airport bundle pulls geo-airport but NOT geo-transit. Pure-data modules, no cycles.
         manualChunks(id) {
-          if (/\/render\/(rail|airportDiagram|highways)\.ts$/.test(id)) return "geo-data";
+          if (/\/render\/airportDiagram\.ts$/.test(id)) return "geo-airport";
+          if (/\/render\/(rail|highways)\.ts$/.test(id)) return "geo-transit";
           if (/\/src\/airport\//.test(id)) return "airport-app";
         },
       },
