@@ -57,6 +57,20 @@ func main() {
 	opts.APIPollInterval = envMs("API_POLL_MS", opts.APIPollInterval)
 	radio := feed.NewRadio(opts)
 
+	// Second SDR: 978 MHz UAT via dump978-fa, serving its own aircraft.json (default :8081). Its
+	// traffic (UAT-only GA + TIS-B/ADS-R targets) is merged into the 1090 feed. Env UAT_JSON_URL=""
+	// disables it; when the 978 decoder isn't running the fetch just fails and the merge is a no-op,
+	// so this is safe to leave on. (FIS-B off-air weather from the same SDR is a separate phase — see
+	// docs/DUAL-SDR-978.md.)
+	var uatSrc *feed.RadioSource
+	if uatURL := env("UAT_JSON_URL", "http://localhost:8081/aircraft.json"); uatURL != "" {
+		uo := opts
+		uo.RadioURL = uatURL
+		uo.SupplementAPI = false
+		uatSrc = feed.NewRadio(uo)
+		log.Printf("feed: 978 UAT source at %s (2nd SDR / dump978-fa; graceful if absent)", uatURL)
+	}
+
 	var apiSrc *feed.APISource
 	if opts.SupplementAPI {
 		apiSrc = feed.NewAPI(opts.APIURLTemplate, func() feed.View {
@@ -149,6 +163,9 @@ func main() {
 	defer stop()
 
 	go radio.Run(ctx)
+	if uatSrc != nil {
+		go uatSrc.Run(ctx)
+	}
 	if apiSrc != nil {
 		go apiSrc.Run(ctx, opts.APIPollInterval)
 	}
@@ -182,6 +199,9 @@ func main() {
 				lastBeat = time.Now()
 				now := float64(time.Now().UnixMilli())
 				list := snap.Aircraft
+				if uatSrc != nil {
+					list = feed.MergeSources(list, uatSrc.Latest().Aircraft) // + 978 UAT traffic (local)
+				}
 				if apiSrc != nil {
 					list = feed.MergeSources(list, apiSrc.Latest().Aircraft)
 				}

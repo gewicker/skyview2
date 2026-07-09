@@ -112,4 +112,10 @@ This experience is **graphically heavy** and will **NOT render on the Pi's IPS k
 (`internal/feed/fire.go`) is **Seattle-only** (keyless Seattle SODA 911). KC/Eastside (Bellevue,
 Redmond, Kent…) has no keyless feed — PulsePoint needs an agency partnership (v5 backlog #5).
 
-**Hardware-blocked:** FIS-B off-air weather (needs a 978 MHz UAT SDR).
+**Second SDR added 2026-07-09 → 978 MHz UAT + FIS-B unblocked** (`docs/DUAL-SDR-978.md`):
+- UAT (978) aircraft traffic — server merges a 2nd `aircraft.json` (env `UAT_JSON_URL`, default
+  `:8081`; graceful no-op when absent). SHIPPED in `main.go`. Pi-side: pin SDR serials + stand up
+  dump978-fa serving :8081 (`pi-setup/install-978.sh` scaffolds; George executes/tunes).
+- **FIS-B off-air weather (NEXRAD)** — no longer hardware-blocked; now a PHASE 2: decode FIS-B from
+  dump978 → `/api/wxradar` Go feed → point the existing `RadarLayer` at it. Needs on-device 978 uplink
+  frames to build/verify.
