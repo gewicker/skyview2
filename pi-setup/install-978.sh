@@ -22,7 +22,7 @@ if ! command -v dump978-fa >/dev/null 2>&1; then
   # SoapySDR headers to BUILD and the rtlsdr Soapy MODULE to actually open the dongle at runtime.
   sudo apt-get update -qq || true
   sudo apt-get install -y build-essential libboost-system-dev libboost-program-options-dev \
-    libboost-regex-dev librtlsdr-dev libsoapysdr-dev soapysdr-module-rtlsdr
+    libboost-regex-dev libboost-filesystem-dev librtlsdr-dev libsoapysdr-dev soapysdr-module-rtlsdr
   S=/tmp/dump978; rm -rf "$S"
   git clone --depth 1 https://github.com/flightaware/dump978 "$S"
   make -C "$S"
