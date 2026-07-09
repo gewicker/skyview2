@@ -68,10 +68,18 @@ type cache struct {
 
 	// AeroDataBox (RapidAPI) — keyed, quota-limited upgrade source. Empty key = disabled.
 	adbKey          string
-	adbMonthlyUnits int
+	adbMonthlyUnits int // rolling 30-day UNIT cap (name kept for env/back-compat; window is rolling, not calendar)
 	adbDailyCalls   int
 	adbTTL          time.Duration // longer than the adsbdb TTL: each scarce call is reused all day
 	q               quotaState
+
+	// AeroDataBox health / circuit-breaker (in-memory; reset on restart, repopulated on the next call).
+	adbBreakerUntil int64  // ms — source suspended until this time after a quota/auth failure
+	adbLastStatus   string // last call outcome ("ok" / "quota exhausted" / "auth error" / "http 404" / "network error")
+	adbLastAt       int64  // ms — last call attempt
+	adbLastOKAt     int64  // ms — last successful (200) call
+	adbQuotaRem     int    // provider's X-RateLimit-Requests-Remaining (-1 = unknown)
+	adbQuotaLimit   int    // provider's X-RateLimit-Requests-Limit   (-1 = unknown)
 }
 
 func newCache(path string, ttlHours float64, adbKey string, adbMonthlyUnits, adbDailyCalls int) *cache {
@@ -84,6 +92,8 @@ func newCache(path string, ttlHours float64, adbKey string, adbMonthlyUnits, adb
 		adbMonthlyUnits: adbMonthlyUnits,
 		adbDailyCalls:   adbDailyCalls,
 		adbTTL:          18 * time.Hour, // a flight's leg is stable for its whole visit; reuse the call
+		adbQuotaRem:     -1,
+		adbQuotaLimit:   -1,
 	}
 	if b, err := os.ReadFile(path); err == nil {
 		var f cacheFile

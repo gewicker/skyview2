@@ -57,6 +57,14 @@ func (e *Enricher) nearHome(ac *aircraft.Aircraft) bool {
 // Run flushes the disk cache periodically + on shutdown.
 func (e *Enricher) Run(ctx context.Context) { e.cache.runFlush(ctx) }
 
+// ADBStatus returns a health/budget snapshot of the AeroDataBox source (for /api/enrich).
+func (e *Enricher) ADBStatus(now int64) ADBStatus { return e.cache.adbStatus(now) }
+
+// ADBProbe makes one real AeroDataBox test call for a callsign (for /api/enrich?probe=CS).
+func (e *Enricher) ADBProbe(cs string, now int64) ADBProbeResult {
+	return e.cache.adbProbe(strings.ToUpper(strings.TrimSpace(cs)), now)
+}
+
 // Process enriches a snapshot in place-ish (returns the same slice, mutated).
 func (e *Enricher) Process(list []aircraft.Aircraft, now int64) []aircraft.Aircraft {
 	adbSpent := 0 // cap NEW AeroDataBox lookups per tick so a startup burst can't drain the day

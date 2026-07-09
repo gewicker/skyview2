@@ -64,12 +64,18 @@ func main() {
 			return feed.View{Lat: c.CenterLat, Lon: c.CenterLon, RadiusMiles: c.RadiusMiles}
 		})
 	}
-	// adsbdb (free) baseline + AeroDataBox (RapidAPI, keyed) targeted upgrade. The AeroDataBox key
-	// is held server-side; Basic plan is 600 units/month so we cap spend (monthly units + daily
-	// calls) and only look up nearby commercial flights whose route is uncertain/missing.
+	// adsbdb (free) baseline + AeroDataBox (RapidAPI, keyed) targeted upgrade. The AeroDataBox key is
+	// held server-side; Basic plan is ~600 requests/month, so we cap spend with a ROLLING 30-DAY unit
+	// budget (cycle-agnostic — RapidAPI resets on the subscription anniversary, not the 1st) + a daily
+	// call cap, and only look up nearby commercial flights whose route is uncertain/missing. Caps are
+	// set conservatively BELOW the plan limit for headroom; env-tunable once the real usage is known.
+	adbKey := env("AERODATABOX_KEY", "53ccb61ac2msh968e55d433a3577p198057jsn8caf3b025ce3")
+	if os.Getenv("AERODATABOX_DISABLE") == "1" {
+		adbKey = "" // hard kill-switch: fully disable the AeroDataBox source (e.g. while a billing
+		// cycle is exhausted); the free adsbdb baseline + geometry verifier carry on unchanged.
+	}
 	enr := enrich.New(filepath.Join(*dataDir, "route-cache.json"), envFloat("ROUTE_CACHE_HOURS", 12),
-		env("AERODATABOX_KEY", "53ccb61ac2msh968e55d433a3577p198057jsn8caf3b025ce3"),
-		envInt("ADB_MONTHLY_UNITS", 550), envInt("ADB_DAILY_CALLS", 18))
+		adbKey, envInt("ADB_MONTHLY_UNITS", 500), envInt("ADB_DAILY_CALLS", 15))
 	enr.UseView(func() (float64, float64, float64) {
 		c := cfg.Get()
 		return c.CenterLat, c.CenterLon, c.RadiusMiles
@@ -125,11 +131,13 @@ func main() {
 		Addr: *addr,
 		Handler: httpd.New(httpd.Deps{
 			Hub: h, Cfg: cfg, Scenes: scenes, Notable: notable, Snapshot: snapshot, Status: status,
-			Traffic: func() any { return traffic.Latest() },
-			Rail:    func() any { return rail.Latest() },
-			Buses:   func() any { return buses.Latest() },
-			Ferries: func() any { return ferries.Latest() },
-			Fire:    func() any { return fire.Latest() },
+			Traffic:     func() any { return traffic.Latest() },
+			Rail:        func() any { return rail.Latest() },
+			Buses:       func() any { return buses.Latest() },
+			Ferries:     func() any { return ferries.Latest() },
+			Fire:        func() any { return fire.Latest() },
+			Enrich:      func() any { return enr.ADBStatus(time.Now().UnixMilli()) },
+			EnrichProbe: func(cs string) any { return enr.ADBProbe(cs, time.Now().UnixMilli()) },
 		}),
 		// Hardening. No blanket WriteTimeout — it would kill the long-lived /ws connection;
 		// per-write deadlines live in the hub instead.

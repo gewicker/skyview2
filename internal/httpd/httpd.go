@@ -43,6 +43,10 @@ type Deps struct {
 	Ferries func() any
 	// Fire returns the latest Seattle Fire 911 incident snapshot. May be nil when unwired.
 	Fire func() any
+	// Enrich returns the AeroDataBox health/budget snapshot; EnrichProbe makes one manual test
+	// call for a callsign. Both may be nil when unwired.
+	Enrich      func() any
+	EnrichProbe func(cs string) any
 }
 
 // New builds the HTTP handler: WS, REST, and the embedded SPA.
@@ -72,6 +76,23 @@ func New(d Deps) http.Handler {
 	})
 
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, d.Status()) })
+	// AeroDataBox enrichment health: GET /api/enrich → budget + breaker + provider quota snapshot;
+	// GET /api/enrich?probe=CALLSIGN → one real test call (spends a unit) reporting its outcome.
+	mux.HandleFunc("/api/enrich", func(w http.ResponseWriter, r *http.Request) {
+		if cs := r.URL.Query().Get("probe"); cs != "" {
+			if d.EnrichProbe == nil {
+				http.NotFound(w, r)
+				return
+			}
+			writeJSON(w, d.EnrichProbe(cs))
+			return
+		}
+		if d.Enrich == nil {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, d.Enrich())
+	})
 	mux.HandleFunc("/api/aircraft", func(w http.ResponseWriter, r *http.Request) {
 		now, ac := d.Snapshot()
 		writeJSON(w, map[string]any{"now": now, "aircraft": ac})
