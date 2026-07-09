@@ -47,6 +47,10 @@ type Deps struct {
 	// call for a callsign. Both may be nil when unwired.
 	Enrich      func() any
 	EnrichProbe func(cs string) any
+	// WxRadar returns off-air (FIS-B) NEXRAD metadata (bounds/time/age); WxRadarPNG returns the
+	// current raster bytes. Both may be nil when unwired.
+	WxRadar    func() any
+	WxRadarPNG func() ([]byte, bool)
 }
 
 // New builds the HTTP handler: WS, REST, and the embedded SPA.
@@ -76,6 +80,29 @@ func New(d Deps) http.Handler {
 	})
 
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, d.Status()) })
+	// Off-air (FIS-B) weather radar: metadata JSON + the current NEXRAD raster PNG. Returns {}/404
+	// until the 978 decoder produces a product, so the client falls back to online radar meanwhile.
+	mux.HandleFunc("/api/wxradar", func(w http.ResponseWriter, r *http.Request) {
+		if d.WxRadar == nil {
+			writeJSON(w, map[string]any{})
+			return
+		}
+		writeJSON(w, d.WxRadar())
+	})
+	mux.HandleFunc("/api/wxradar/nexrad.png", func(w http.ResponseWriter, r *http.Request) {
+		if d.WxRadarPNG == nil {
+			http.NotFound(w, r)
+			return
+		}
+		b, ok := d.WxRadarPNG()
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "no-cache")
+		_, _ = w.Write(b)
+	})
 	// AeroDataBox enrichment health: GET /api/enrich → budget + breaker + provider quota snapshot;
 	// GET /api/enrich?probe=CALLSIGN → one real test call (spends a unit) reporting its outcome.
 	mux.HandleFunc("/api/enrich", func(w http.ResponseWriter, r *http.Request) {

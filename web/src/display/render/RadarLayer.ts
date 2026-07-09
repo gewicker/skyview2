@@ -10,9 +10,10 @@
 // ("now") for ~1.6 s before continuing into the nowcast, with a short crossfade so the
 // bedside panel never strobes.
 import type { Layer, FrameContext } from "./types";
-import { startRadar, getRadar } from "./radar";
+import { startRadar, getRadar, startOffAirRadar, getOffAirRadar, type OffAirRadar } from "./radar";
 
 const DEG = Math.PI / 180;
+const OFFAIR_FRESH_S = 600; // prefer off-air (FIS-B) NEXRAD while it's < 10 min old; else online radar
 const SCHEME = 2;        // RainViewer "Universal Blue" — cool, reads clearly as precip on a dark base
 const HOLD_SLOTS = 3;    // extra 500 ms slots held on the "now" frame (~1.6 s)
 const SLOT = 0.5;        // seconds per frame (2 fps)
@@ -56,11 +57,19 @@ export class RadarLayer implements Layer {
   readonly name = "radar";
 
   constructor() {
-    startRadar(); // begin polling RainViewer (keyless)
+    startRadar();       // online RainViewer (keyless) — the fallback
+    startOffAirRadar(); // off-air FIS-B NEXRAD from the 978 SDR — preferred when fresh
   }
 
   draw(f: FrameContext): void {
     if (!f.cfg.showRadar) return;
+    // Prefer real off-air NEXRAD while it's fresh (no internet needed); otherwise fall through to the
+    // online radar below. A single georeferenced image, drawn through the same mercator affine.
+    const oa = getOffAirRadar();
+    if (oa && oa.age < OFFAIR_FRESH_S) {
+      this.paintOffAir(f, oa, f.cfg.radarOpacity ?? 0.55);
+      return;
+    }
     const { host, frames, nowIndex } = getRadar();
     if (!host || frames.length === 0) return;
     const N = frames.length;
@@ -127,6 +136,25 @@ export class RadarLayer implements Layer {
         ctx.restore();
       }
     }
+    ctx.restore();
+  }
+
+  // Draw the single off-air (FIS-B) NEXRAD image over its lat/lon bounds via the mercator affine —
+  // coarse weather is fine as one image (no tiling); a jet still paints on top at full brightness.
+  private paintOffAir(f: FrameContext, oa: OffAirRadar, opacity: number): void {
+    const img = getTile(`${oa.url}?t=${oa.time}`); // cache-bust on product time → fetch new frames
+    if (!img) return;
+    const [n, s, e, w] = oa.bounds; // north, south, east, west
+    const cam = f.cam, ctx = f.ctx;
+    const a = cam.project(n, w); // NW
+    const b = cam.project(n, e); // NE
+    const c = cam.project(s, w); // SW
+    const iw = img.naturalWidth || 1, ih = img.naturalHeight || 1;
+    ctx.save();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = opacity;
+    ctx.transform((b.x - a.x) / iw, (b.y - a.y) / iw, (c.x - a.x) / ih, (c.y - a.y) / ih, a.x, a.y);
+    ctx.drawImage(img, 0, 0, iw, ih);
     ctx.restore();
   }
 }

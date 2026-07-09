@@ -43,3 +43,41 @@ export function startRadar(): void {
   poll();
   setInterval(poll, 5 * 60 * 1000);
 }
+
+// --- Off-air (FIS-B) NEXRAD from the 978 SDR ------------------------------------------------------
+// The server exposes the decoded off-air radar at /api/wxradar (metadata) + /api/wxradar/nexrad.png
+// (the raster). It's a SINGLE georeferenced image over a lat/lon box, not tiles — RadarLayer draws it
+// through the same mercator affine. When fresh, it's preferred over the online RainViewer radar; when
+// absent/stale the online path carries on. Works with NO internet — the whole point of the 2nd radio.
+
+export interface OffAirRadar {
+  url: string;                                   // image URL (served by our own origin)
+  bounds: [number, number, number, number];      // [north, south, east, west]
+  time: number;                                  // product time, epoch ms
+  age: number;                                   // seconds since the product time
+}
+
+let offair: OffAirRadar | null = null;
+let offairStarted = false;
+
+export function getOffAirRadar(): OffAirRadar | null { return offair; }
+
+/** Poll the server's off-air radar metadata (~every 60 s). Idempotent. Absent/empty → null. */
+export function startOffAirRadar(): void {
+  if (offairStarted) return;
+  offairStarted = true;
+  const poll = () => {
+    fetch("/api/wxradar")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (j && typeof j.url === "string" && Array.isArray(j.bounds) && j.bounds.length === 4) {
+          offair = { url: j.url, bounds: [j.bounds[0], j.bounds[1], j.bounds[2], j.bounds[3]], time: j.time || 0, age: j.age ?? 1e9 };
+        } else {
+          offair = null;
+        }
+      })
+      .catch(() => {});
+  };
+  poll();
+  setInterval(poll, 60 * 1000);
+}

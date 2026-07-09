@@ -124,6 +124,11 @@ func main() {
 		return feed.View{Lat: c.CenterLat, Lon: c.CenterLon, RadiusMiles: c.RadiusMiles}
 	})
 
+	// Off-air (FIS-B) NEXRAD weather from the 978 SDR decoder (docs/DUAL-RADIO-BUILD-PLAN.md). Reads the
+	// decoder's output dir; empty WXRADAR_DIR disables it. Graceful: no product → /api/wxradar {} → the
+	// client keeps using the online (RainViewer) radar, so this is safe to run with no second radio.
+	wxradar := feed.NewWxRadar(env("WXRADAR_DIR", "/run/dump978/wx"))
+
 	var lastMu sync.Mutex
 	var lastNow float64
 	var lastList []aircraft.Aircraft
@@ -152,6 +157,8 @@ func main() {
 			Fire:        func() any { return fire.Latest() },
 			Enrich:      func() any { return enr.ADBStatus(time.Now().UnixMilli()) },
 			EnrichProbe: func(cs string) any { return enr.ADBProbe(cs, time.Now().UnixMilli()) },
+			WxRadar:     func() any { return wxradar.Latest() },
+			WxRadarPNG:  func() ([]byte, bool) { return wxradar.PNG() },
 		}),
 		// Hardening. No blanket WriteTimeout — it would kill the long-lived /ws connection;
 		// per-write deadlines live in the hub instead.
@@ -175,6 +182,7 @@ func main() {
 	go buses.Run(ctx)
 	go ferries.Run(ctx)
 	go fire.Run(ctx)
+	go wxradar.Run(ctx)
 	log.Printf("feed: radio %s every %s (api supplement: %v, wsdot traffic: %v, oba rail: %v, oba buses: %v, wsf ferries: %v, fire911: %v)", opts.RadioURL, opts.PollInterval, opts.SupplementAPI, traffic.Enabled(), rail.Enabled(), buses.Enabled(), ferries.Enabled(), fire.Enabled())
 
 	go func() {
