@@ -6,13 +6,14 @@
 # the primary 1090 feed. It does NOT set SDR serials or rebind dump1090 — do those MANUALLY per
 # docs/DUAL-SDR-978.md (rebinding the wrong serial WOULD break 1090, so it's kept out of automation).
 #
-# Prereq (manual, once): give each dongle a unique serial and bind dump1090 to its serial —
-#   rtl_test ; rtl_eeprom -d 0 -s 00001090 ; rtl_eeprom -d 1 -s 00000978  (replug)
-#   then add `--device 00001090` to dump1090-fa.service and restart it.
+# Prereq (manual, once): this Pi's two Nooelec dongles already have unique factory serials
+#   (rtl_test → 95371368 and 53037501), so NO rtl_eeprom rewrite is needed. Just bind the 1090 decoder
+#   to its serial: add `--device 95371368` to dump1090-fa.service and restart it (then verify
+#   aircraft.json still flows). See docs/DUAL-SDR-978.md.
 # VERIFY the dump978-fa flags below against your build (`dump978-fa --help`).
 set -euo pipefail
 
-UAT_SERIAL="${UAT_SERIAL:-00000978}"
+UAT_SERIAL="${UAT_SERIAL:-53037501}"  # this Pi's 2nd Nooelec dongle (rtl_test SN); override if you swap dongles
 
 echo "==> dump978-fa (978 MHz UAT decoder)"
 if ! command -v dump978-fa >/dev/null 2>&1; then

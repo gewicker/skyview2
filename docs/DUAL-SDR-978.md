@@ -10,23 +10,27 @@ A second (identical) RTL-SDR was added. The first decodes **1090 MHz ES ADS-B** 
 
 ---
 
-## The one hard requirement: pin each SDR by SERIAL
+## The one hard requirement: bind each decoder by SERIAL
 
-Two identical RTL-SDRs get non-deterministic device indices across reboots, so `dump1090-fa` and
-`dump978-fa` will fight over which radio they grab. Give each a unique serial ONCE, then bind by serial.
+Two SDRs get non-deterministic device indices across reboots, so `dump1090-fa` and `dump978-fa` will
+otherwise fight over which radio they grab. Bind each decoder to a fixed serial.
 
-```bash
-# With BOTH dongles plugged in, list them:
-rtl_test            # note the two device indices (0 and 1)
-# Set serials (do one dongle at a time to be sure which is which, or use -d <index>):
-rtl_eeprom -d 0 -s 00001090
-rtl_eeprom -d 1 -s 00000978
-# Replug both after writing.
+**This Pi's dongles already have unique factory serials (Nooelec NESDR SMArt v5), so no `rtl_eeprom`
+rewrite is needed:**
 ```
+rtl_test →  0: SN 95371368   ·   1: SN 53037501
+```
+Assignment (keeps the currently-working 1090 dongle as 1090 — it's device 0 = SN 95371368 today):
+- **1090 → serial `95371368`** (the working feed; leave it on whichever antenna it's on now)
+- **978  → serial `53037501`** (the other dongle; put it on the 978 antenna)
 
-Then bind each decoder to its serial (idempotent edits to the two services):
-- `dump1090-fa`: add `--device 00001090` (FlightAware dump1090 accepts a serial for `--device`).
-- `dump978-fa`: `--sdr driver=rtlsdr,serial=00000978`.
+Bind each decoder to its serial:
+- `dump1090-fa`: add `--device 95371368` to the `ExecStart`, `daemon-reload`, restart, and **verify
+  aircraft still flow** (`curl -s localhost:8080/aircraft.json | head`) — this is the only step that
+  can disturb the working 1090 feed, so confirm before moving on and revert (drop `--device`) if it
+  breaks. (Verify the flag name with `dump1090-fa --help`; FlightAware's build takes a serial for
+  `--device`.)
+- `dump978-fa`: `--sdr driver=rtlsdr,serial=53037501` (this is `install-978.sh`'s `UAT_SERIAL` default).
 
 ---
 
