@@ -26,17 +26,26 @@ case "${1:-}" in
   * ) echo "usage: harden-pi.sh [--seal|--unseal]"; exit 1 ;;
 esac
 
-echo "==> Hardware watchdog (auto-reboot a hung Pi)"
-if [ -e /dev/watchdog ]; then
-  sudo mkdir -p /etc/systemd/system.conf.d
-  sudo tee /etc/systemd/system.conf.d/10-skyview-watchdog.conf >/dev/null <<'EOF'
+echo "==> Hardware watchdog (auto-reboot a hung Pi — so a hard lockup never needs a power cycle)"
+# Enable the BCM watchdog in firmware so /dev/watchdog EXISTS after boot. Without it a truly wedged Pi
+# can't self-reboot and needs a manual power cycle (exactly the symptom we're killing). Persist it.
+BOOTCFG=/boot/firmware/config.txt; [ -f "$BOOTCFG" ] || BOOTCFG=/boot/config.txt
+if [ -f "$BOOTCFG" ] && ! grep -q '^dtparam=watchdog=on' "$BOOTCFG"; then
+  echo 'dtparam=watchdog=on' | sudo tee -a "$BOOTCFG" >/dev/null
+  echo "    added dtparam=watchdog=on to $BOOTCFG (arms /dev/watchdog after the next reboot)."
+fi
+# Tell systemd to pet the watchdog. Harmless if /dev/watchdog isn't present yet — it activates once the
+# dtparam above takes effect on the next reboot.
+sudo mkdir -p /etc/systemd/system.conf.d
+sudo tee /etc/systemd/system.conf.d/10-skyview-watchdog.conf >/dev/null <<'EOF'
 [Manager]
 RuntimeWatchdogSec=15
 RebootWatchdogSec=2min
 EOF
-  echo "    systemd pets /dev/watchdog every 15s; a lockup reboots in ~2min."
+if [ -e /dev/watchdog ]; then
+  echo "    /dev/watchdog present; systemd pets it every 15s — a lockup reboots in ~2min."
 else
-  echo "    /dev/watchdog not present; skipping (add dtparam=watchdog=on if needed)."
+  echo "    /dev/watchdog not present yet; REBOOT once to arm it (dtparam was just enabled)."
 fi
 
 echo "==> Logs to RAM, size-capped (spare the SD card)"
@@ -61,6 +70,11 @@ for w in $(nmcli -t -f DEVICE,TYPE device 2>/dev/null | awk -F: '$2=="wifi"{prin
   sudo iw dev "$w" set power_save off 2>/dev/null || true
 done
 sudo nmcli general reload 2>/dev/null || true   # re-read conf.d WITHOUT dropping our SSH link (no restart)
+
+echo "==> mDNS publisher (avahi) enabled so skyview.local is advertised"
+# Make sure the Pi keeps advertising skyview.local. (Windows-side resolution is still flaky — for a
+# rock-solid name, add a DHCP reservation on the router + a hosts entry on the PC; see the runbook.)
+sudo systemctl enable --now avahi-daemon 2>/dev/null || true
 
 echo "==> Self-heal script + 2-minute timer"
 sudo tee /usr/local/bin/skyview-selfheal >/dev/null <<'EOF'
