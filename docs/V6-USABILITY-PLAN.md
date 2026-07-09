@@ -4,9 +4,11 @@ Status: PLANNING. Author: senior UX audit, 2026-06-21.
 > **Shipped 2026-07-09 (pending deploy):** P0-1 (mute/settings left cluster never fully hides —
 > `autoHidePersist`), P0-3 (floating controls warm-dark-red at night via `ctlBtnStyle(night)`; TapCard
 > photo + TransitCard dimmed at night), P0-5 (deselect pill stays while a card is open; TapCard ✕
-> 26→38px, TransitCard ✕ → 34px padded + aria-label). All in `Display.tsx`. Remaining: P0-2 (first-run
-> hint), P0-4 (unify the night predicate across Display/Control), and the P1 drawer re-org / Fire-EMS
-> rows / slider ergonomics.
+> 26→38px, TransitCard ✕ → 34px padded + aria-label). All in `Display.tsx`.
+> **Shipped 2026-07-09 (batch 2, pending deploy):** P0-4 (Control now takes `muted` so its `night`
+> matches Display's `ctlNight` — no light-flash seam on Mute) + P1-3 (added Fire/EMS 911 + Arrival-cue
+> rows to Overlays; the layer was UI-unreachable). Remaining: P0-2 (first-run hint), P1-1/2 drawer
+> re-org + collapse, P1-4 slider ergonomics, P1-6 a11y.
 Scope: usability of the live display + settings drawer across the bedside touch
 kiosk (1280×800) AND web/mobile viewers. Calm-first: nothing here should add
 chrome to the glanceable resting view.

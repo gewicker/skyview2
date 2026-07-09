@@ -19,6 +19,7 @@ interface Props {
   onRestart?: () => void;     // touch: relaunch kiosk
   onResetAll?: () => void;    // touch: reset server config to defaults
   dirty?: boolean;            // web has unpushed local overrides
+  muted?: boolean;            // "mute now" is active → night-theme the drawer too (matches Display chrome)
   scenes?: SceneMeta[];
   onSaveScene?: (name: string) => void;
   onApplyScene?: (name: string) => void;
@@ -26,14 +27,16 @@ interface Props {
 }
 
 export default function Control({ config: c, surface, onChange, onPush, onReset, onRestart, onResetAll, dirty,
-  scenes = [], onSaveScene, onApplyScene, onDeleteScene }: Props) {
+  muted, scenes = [], onSaveScene, onApplyScene, onDeleteScene }: Props) {
   const set = onChange;
   const setField = (k: keyof ShowFields, v: boolean) => set({ showFields: { ...c.showFields, [k]: v } });
   const [sceneName, setSceneName] = useState("");
 
   // Night/lights-out theme: recolour the whole control surface dark + red-shifted so opening
   // settings at the bedside doesn't blast white light into a dark room. Drives the --sv-* vars.
-  const night = c.monitorMode === "red" || c.monitorMode === "lightsout" || c.monitorMode === "night";
+  // Include `muted` so the drawer body matches Display's `ctlNight` frame — no light-flash seam when
+  // you "Mute now" (usability P0-4).
+  const night = c.monitorMode === "red" || c.monitorMode === "lightsout" || c.monitorMode === "night" || !!muted;
   const themeVars: CSSProperties = night ? {
     "--sv-bg": "#160c0c", "--sv-surface": "#231414", "--sv-text": "#e6c2b4", "--sv-text2": "#c79a8c",
     "--sv-muted": "#9a6a60", "--sv-border": "#3a2020", "--sv-switch-off": "#3a2222",
@@ -97,6 +100,10 @@ export default function Control({ config: c, surface, onChange, onPush, onReset,
         <ListRow label="Light rail"><Switch value={c.showRail} onChange={(v) => set({ showRail: v })} /></ListRow>
         <ListRow label="Buses"><Switch value={c.showBuses} onChange={(v) => set({ showBuses: v })} /></ListRow>
         <ListRow label="Ferries"><Switch value={c.showFerries} onChange={(v) => set({ showFerries: v })} /></ListRow>
+        <ListRow label="Fire / EMS 911"><Switch value={c.showFireEms} onChange={(v) => set({ showFireEms: v })} /></ListRow>
+        {c.showFireEms && (
+          <ListRow label="Arrival cue"><Switch value={c.fireEmsArrivalCue} onChange={(v) => set({ fireEmsArrivalCue: v })} /></ListRow>
+        )}
         <ListRow label="Range rings"><Switch value={c.rangeRings} onChange={(v) => set({ rangeRings: v })} /></ListRow>
         <ListRow label="Grid">
           <Segmented<GridOverlay> value={c.gridOverlay}

@@ -474,6 +474,7 @@ export default function Display() {
             <div style={{ flex: 1, overflow: "auto" }}>
               {effective ? (
                 <Control config={effective} surface={isKiosk ? "touch" : "web"}
+                  muted={muted}
                   onChange={applyConfig}
                   onPush={() => { pushToDisplay(); setShowSettings(false); }}
                   onReset={resetToDisplay}
