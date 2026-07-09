@@ -43,6 +43,8 @@ After=network.target
 # --sdr binds THIS SDR by serial so it never grabs the 1090 dongle. Raw UAT frames go to :30978,
 # which skyaware978 consumes. (Verify flags with 'dump978-fa --help' if your build differs.)
 ExecStart=/usr/local/bin/dump978-fa --sdr driver=rtlsdr,serial=$UAT_SERIAL --raw-port 30978
+# Low priority: the 978 SDR must yield to the bedside display + the primary 1090 decode.
+Nice=10
 Restart=always
 RestartSec=5
 [Install]
@@ -57,7 +59,9 @@ After=dump978-fa.service
 Requires=dump978-fa.service
 [Service]
 ExecStartPre=/bin/mkdir -p /run/dump978
-ExecStart=/usr/local/bin/skyaware978 --connect localhost:30978 --reconnect-interval 30 --output /run/dump978
+# --json-dir (NOT --output) is the correct flag for skyaware978.
+ExecStart=/usr/local/bin/skyaware978 --connect localhost:30978 --reconnect-interval 30 --json-dir /run/dump978
+Nice=10
 Restart=always
 RestartSec=5
 [Install]
