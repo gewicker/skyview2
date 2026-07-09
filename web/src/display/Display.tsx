@@ -62,6 +62,7 @@ export default function Display() {
   const [showSettings, setShowSettings] = useState(false);
   const [orbit, setOrbit] = useState({ x: 0, y: 0 }); // burn-in step offset (kiosk)
   const [airportEntry, setAirportEntry] = useState<{ x: number; y: number } | null>(null); // KSEA door
+  const [showHint, setShowHint] = useState(false); // one-time first-run interaction hint (P0-2)
 
   // Hover-capable pointer? (desktop) → reveal the airport-view entry on hover; touch clients get a
   // zoom-gated chip instead (the poll effect below). Never shown on the kiosk.
@@ -114,6 +115,12 @@ export default function Display() {
     setUiVisible(true);
     clearTimeout(uiTimer.current);
     uiTimer.current = window.setTimeout(() => setUiVisible(false), 14000); // longer idle window — the controls were vanishing too fast on a glanceable device
+  };
+  // One-time first-run hint: teach that the map is tappable + where settings live. The dismissal is
+  // persisted so it only ever shows on the first session; it never appears on the ceiling projector.
+  const dismissHint = () => {
+    setShowHint(false);
+    try { localStorage.setItem("skyview.hintSeen", "1"); } catch { /* storage unavailable — fine */ }
   };
 
   // Pointer/gesture state.
@@ -244,6 +251,12 @@ export default function Display() {
   // Start the auto-hide timer once on mount; clear it on unmount.
   useEffect(() => { pokeUi(); return () => clearTimeout(uiTimer.current); }, []);
 
+  // Show the first-run hint once (skip the ceiling projector, which has no viewer to teach).
+  useEffect(() => {
+    if (isProjector) return;
+    try { if (!localStorage.getItem("skyview.hintSeen")) setShowHint(true); } catch { /* ignore */ }
+  }, []);
+
   // Lights-out: on the Pi, actually cut the display power across the bedtime→sunrise
   // boundary (not just render black) so the panel/projector isn't glowing all night.
   useEffect(() => {
@@ -327,12 +340,14 @@ export default function Display() {
         // Tap: a plane wins; otherwise a navaid/fix/final (overlay tap-to-reveal); else clear.
         const hex = r.pickAt(p.x, p.y);
         if (hex) {
+          dismissHint();
           r.select(hex); setSelected(hex);
           r.selectNav(null); setSelectedNav(null);
           setTransit(null); r.selectFerry(null); r.selectBus(null);
         } else {
           const tp = r.pickTransit(p.x, p.y); // a train/bus/station, before navaids
           if (tp) {
+            dismissHint();
             setTransit(tp);
             r.selectFerry(tp.kind === "ferry" ? tp.id : null); // crossing lane for a tapped ferry
             r.selectBus(tp.kind === "bus" ? tp.id : null);     // route shape for a tapped bus
@@ -429,6 +444,21 @@ export default function Display() {
           }}>
           KSEA airport view <span style={{ opacity: 0.8 }}>↗</span>
         </button>
+      )}
+
+      {/* One-time first-run hint (P0-2): the map's interactivity is otherwise invisible. Dismisses on
+          the first successful tap or the ✕, and never returns (persisted). Not on the projector. */}
+      {showHint && !isProjector && (
+        <div style={{ position: "absolute", left: "50%", bottom: 22, transform: "translateX(-50%)",
+          display: "flex", alignItems: "center", gap: 10, padding: "8px 10px 8px 14px", borderRadius: 18,
+          border: "0.5px solid rgba(255,255,255,0.16)", background: "rgba(12,16,22,0.78)",
+          color: "rgba(228,236,246,0.95)", font: "500 12.5px system-ui", whiteSpace: "nowrap", zIndex: 16,
+          backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", boxShadow: "0 4px 16px rgba(0,0,0,0.4)" }}>
+          <span>Tap a plane for details · <span style={{ opacity: 0.85 }}>⚙</span> for settings</span>
+          <button onClick={dismissHint} aria-label="Dismiss hint" style={{ border: 0, background: "rgba(255,255,255,0.1)",
+            color: "inherit", width: 24, height: 24, borderRadius: "50%", cursor: "pointer", font: "12px system-ui",
+            display: "grid", placeItems: "center", flex: "none" }}>✕</button>
+        </div>
       )}
 
       {/* On-screen quick controls — auto-hide after inactivity. */}
