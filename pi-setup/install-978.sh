@@ -15,8 +15,11 @@ set -euo pipefail
 
 UAT_SERIAL="${UAT_SERIAL:-53037501}"  # this Pi's 2nd Nooelec dongle (rtl_test SN); override if you swap dongles
 
-echo "==> dump978-fa (978 MHz UAT decoder)"
-if ! command -v dump978-fa >/dev/null 2>&1; then
+echo "==> dump978-fa + skyaware978 (978 UAT decoder + aircraft.json writer)"
+# The flightaware/dump978 repo builds BOTH: dump978-fa (decoder) and skyaware978 (reads the raw
+# stream, tracks aircraft, writes aircraft.json) — so the full pipeline is self-contained, no
+# separate package. Rebuild if either binary is missing (deps are cached, so re-runs are quick).
+if ! command -v dump978-fa >/dev/null 2>&1 || ! command -v skyaware978 >/dev/null 2>&1; then
   echo "    installing build deps (boost + SoapySDR + rtlsdr)…"
   # dump978-fa reads the radio via SoapySDR (its --sdr flag is driver=rtlsdr,…), so it needs the
   # SoapySDR headers to BUILD and the rtlsdr Soapy MODULE to actually open the dongle at runtime.
@@ -27,23 +30,34 @@ if ! command -v dump978-fa >/dev/null 2>&1; then
   git clone --depth 1 https://github.com/flightaware/dump978 "$S"
   make -C "$S"
   sudo install -m755 "$S/dump978-fa" /usr/local/bin/dump978-fa
+  sudo install -m755 "$S/skyaware978" /usr/local/bin/skyaware978
 fi
-
-echo "==> uat2json helper (turns dump978 --json-stdout into a served aircraft.json)"
-# dump978-fa emits per-message JSON on stdout; skyaware978 is FlightAware's full app, but for a
-# self-contained setup we run the tiny tracker that ships in the dump978 repo. If your dump978 build
-# provides `skyaware978`/`uat2json`, prefer that and point it at /run/dump978. Adjust as needed.
 sudo mkdir -p /run/dump978
 
-echo "==> dump978-fa.service (decode on serial $UAT_SERIAL, raw+json out)"
+echo "==> dump978-fa.service (decode on serial $UAT_SERIAL → raw stream on :30978)"
 sudo tee /etc/systemd/system/dump978-fa.service >/dev/null <<EOF
 [Unit]
 Description=dump978-fa UAT (978 MHz) decoder
 After=network.target
 [Service]
+# --sdr binds THIS SDR by serial so it never grabs the 1090 dongle. Raw UAT frames go to :30978,
+# which skyaware978 consumes. (Verify flags with 'dump978-fa --help' if your build differs.)
+ExecStart=/usr/local/bin/dump978-fa --sdr driver=rtlsdr,serial=$UAT_SERIAL --raw-port 30978
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
+EOF
+
+echo "==> skyaware978.service (raw :30978 → /run/dump978/aircraft.json)"
+sudo tee /etc/systemd/system/skyaware978.service >/dev/null <<'EOF'
+[Unit]
+Description=skyaware978 UAT tracker (writes aircraft.json)
+After=dump978-fa.service
+Requires=dump978-fa.service
+[Service]
 ExecStartPre=/bin/mkdir -p /run/dump978
-# VERIFY flags for your build. --sdr binds THIS SDR by serial so it never grabs the 1090 dongle.
-ExecStart=/usr/local/bin/dump978-fa --sdr driver=rtlsdr,serial=$UAT_SERIAL --raw-port 30978 --json-stdout
+ExecStart=/usr/local/bin/skyaware978 --connect localhost:30978 --reconnect-interval 30 --output /run/dump978
 Restart=always
 RestartSec=5
 [Install]
@@ -51,13 +65,10 @@ WantedBy=multi-user.target
 EOF
 
 echo "==> aircraft.json server on :8081 (mirrors the dump1090-json pattern)"
-# NOTE: this serves /run/dump978. You still need something writing aircraft.json into that dir from
-# dump978's stream (skyaware978, or FlightAware's uat2json/skyaware978 package). Until then :8081 is
-# empty and the SkyView merge is a harmless no-op. See docs/DUAL-SDR-978.md for the two options.
 sudo tee /etc/systemd/system/dump978-json.service >/dev/null <<'EOF'
 [Unit]
 Description=Serve dump978 aircraft.json on :8081
-After=dump978-fa.service
+After=skyaware978.service
 [Service]
 ExecStartPre=/bin/mkdir -p /run/dump978
 ExecStart=/usr/bin/python3 -m http.server 8081 --directory /run/dump978
@@ -67,12 +78,12 @@ WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now dump978-fa.service dump978-json.service || true
+sudo systemctl enable --now dump978-fa.service skyaware978.service dump978-json.service || true
 
 echo
-echo "978 UAT decoder installed. Next:"
-echo "  1) Confirm serials are set + dump1090 is bound to its serial (docs/DUAL-SDR-978.md)."
-echo "  2) Get aircraft.json written into /run/dump978 (skyaware978 / uat2json), OR point"
-echo "     UAT_JSON_URL at your skyaware978 endpoint — the SkyView server merges it automatically."
-echo "  3) Check:  journalctl -u dump978-fa -f   and   curl -s localhost:8081/aircraft.json | head"
-echo "  FIS-B off-air weather (NEXRAD) is Phase 2 — see docs/DUAL-SDR-978.md."
+echo "978 UAT pipeline installed (dump978-fa → skyaware978 → :8081). Next:"
+echo "  1) Bind dump1090 to serial 95371368 (docs/DUAL-SDR-978.md) so the two SDRs don't fight."
+echo "  2) Check:  systemctl status dump978-fa skyaware978 --no-pager"
+echo "            curl -s localhost:8081/aircraft.json | head -c 300"
+echo "     The SkyView server merges :8081 automatically — UAT traffic will just appear."
+echo "  3) FIS-B off-air weather (NEXRAD) is Phase 2 — see docs/DUAL-SDR-978.md."
