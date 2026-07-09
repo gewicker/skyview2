@@ -406,10 +406,10 @@ export default function Display() {
 
       {/* Rich tap card for a selected aircraft (top-right). */}
       {sel && state.config && (
-        <TapCard a={sel} cfg={state.config}
+        <TapCard a={sel} cfg={state.config} night={ctlNight}
           onClose={() => { rendererRef.current?.select(null); rendererRef.current?.dismissSpotlight(); setSelected(null); }} />
       )}
-      {transit && <TransitCard pick={transit} onClose={() => { setTransit(null); rendererRef.current?.selectFerry(null); rendererRef.current?.selectBus(null); }} />}
+      {transit && <TransitCard pick={transit} night={ctlNight} onClose={() => { setTransit(null); rendererRef.current?.selectFerry(null); rendererRef.current?.selectBus(null); }} />}
 
       {/* Discreet doorway to the (client-rendered) airport view, anchored over KSEA. Web/mobile only —
           never the kiosk; opens in a new tab so this map session is untouched. */}
@@ -433,17 +433,21 @@ export default function Display() {
 
       {/* On-screen quick controls — auto-hide after inactivity. */}
       <div style={{ position: "absolute", right: 16, bottom: 16, display: "flex", flexDirection: "column", gap: 10, ...autoHide(uiVisible) }}>
-        <CtlBtn label="+" onClick={() => zoom(1.3)} />
-        <CtlBtn label="−" onClick={() => zoom(1 / 1.3)} />
-        <CtlBtn label="⌂" onClick={home} title="Recenter on home" />
+        <CtlBtn label="+" onClick={() => zoom(1.3)} night={ctlNight} />
+        <CtlBtn label="−" onClick={() => zoom(1 / 1.3)} night={ctlNight} />
+        <CtlBtn label="⌂" onClick={home} title="Recenter on home" night={ctlNight} />
       </div>
-      <div style={{ position: "absolute", left: 16, bottom: 16, display: "flex", flexDirection: "column", gap: 10, ...autoHide(uiVisible) }}>
-        <CtlBtn label={muted ? "☀" : "🌙"} onClick={toggleMute}
+      {/* Left cluster (mute + settings) never FULLY hides — the two things you reach for at a bedside
+          must always be findable. Fades to a faint resting state, still hit-testable (usability P0-1). */}
+      <div style={{ position: "absolute", left: 16, bottom: 16, display: "flex", flexDirection: "column", gap: 10, ...autoHidePersist(uiVisible) }}>
+        <CtlBtn label={muted ? "☀" : "🌙"} onClick={toggleMute} night={ctlNight}
           title={muted ? "Resume — clear night mute" : "Mute now (night) until sunrise"} />
-        <CtlBtn label="⚙" onClick={() => setShowSettings(true)} title="Settings" />
+        <CtlBtn label="⚙" onClick={() => setShowSettings(true)} title="Settings" night={ctlNight} />
       </div>
       {selected && (
-        <div style={{ position: "absolute", left: "50%", bottom: 16, transform: "translateX(-50%)", ...autoHide(uiVisible) }}>
+        // The deselect pill stays visible while a card is open (an active interaction shouldn't lose
+        // its dismiss control after the idle timeout — usability P0-5).
+        <div style={{ position: "absolute", left: "50%", bottom: 16, transform: "translateX(-50%)", ...autoHide(uiVisible || !!selected) }}>
           <button onClick={() => { rendererRef.current?.select(null); rendererRef.current?.dismissSpotlight(); setSelected(null); }}
             style={{ ...btnBase, width: "auto", padding: "0 16px", borderRadius: 22, font: "500 13px system-ui" }}>
             ✕ Deselect
@@ -498,13 +502,24 @@ const btnBase: React.CSSProperties = {
   WebkitBackdropFilter: "blur(8px)",
 };
 
-function CtlBtn({ label, onClick, title }: { label: string; onClick: () => void; title?: string }) {
-  return <button onClick={onClick} title={title} aria-label={title || label} style={btnBase}>{label}</button>;
+// The floating control style, warm-dark-red at night so reaching for mute/settings in a dark room
+// doesn't throw cool light (usability P0-3).
+function ctlBtnStyle(night: boolean): React.CSSProperties {
+  return night ? {
+    ...btnBase,
+    border: "0.5px solid rgba(230,150,150,0.22)",
+    background: "rgba(40,14,14,0.66)",
+    color: "rgba(232,182,176,0.92)",
+  } : btnBase;
+}
+
+function CtlBtn({ label, onClick, title, night }: { label: string; onClick: () => void; title?: string; night?: boolean }) {
+  return <button onClick={onClick} title={title} aria-label={title || label} style={ctlBtnStyle(!!night)}>{label}</button>;
 }
 
 // Rich detail card shown when an aircraft is tapped. Pulls the photo from the server
 // proxy and lays out everything the radio + enrichment know, updating live each frame.
-function TapCard({ a, cfg, onClose }: { a: Aircraft; cfg: Config; onClose: () => void }) {
+function TapCard({ a, cfg, onClose, night }: { a: Aircraft; cfg: Config; onClose: () => void; night?: boolean }) {
   const [photo, setPhoto] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
@@ -573,10 +588,11 @@ function TapCard({ a, cfg, onClose }: { a: Aircraft; cfg: Config; onClose: () =>
       backdropFilter: "blur(16px) saturate(115%)", WebkitBackdropFilter: "blur(16px) saturate(115%)",
       fontVariantNumeric: "tabular-nums" }}>
       <div style={{ position: "relative", height: 132, flex: "none", background: photo ? undefined : "linear-gradient(160deg,#1E2530,#141821)" }}>
-        {photo && <img src={photo} alt="" style={{ width: "100%", height: 132, objectFit: "cover", display: "block" }} />}
+        {photo && <img src={photo} alt="" style={{ width: "100%", height: 132, objectFit: "cover", display: "block",
+          filter: night ? "brightness(0.5) saturate(0.8)" : undefined }} />}
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(15,18,24,0.95) 0%, rgba(15,18,24,0) 55%)" }} />
         <button onClick={onClose} aria-label="Close" style={{ position: "absolute", top: 8, right: 8, border: 0,
-          background: "rgba(0,0,0,0.4)", color: "rgba(225,232,240,0.9)", width: 26, height: 26, borderRadius: "50%", cursor: "pointer", font: "14px system-ui" }}>✕</button>
+          background: "rgba(0,0,0,0.45)", color: "rgba(225,232,240,0.92)", width: 38, height: 38, borderRadius: "50%", cursor: "pointer", font: "16px system-ui" }}>✕</button>
       </div>
       <div style={{ overflow: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", padding: "13px 16px 14px" }}>
@@ -698,7 +714,7 @@ function routeProvenance(a: Aircraft): { mark: string; word: string; note: strin
 
 // Compact detail card for a tapped transit element (train / bus / station). Live train shows its
 // schedule deviation as plain-English on-time/late/early.
-function TransitCard({ pick, onClose }: { pick: TransitPick; onClose: () => void }) {
+function TransitCard({ pick, onClose, night }: { pick: TransitPick; onClose: () => void; night?: boolean }) {
   const lineColor = pick.kind === "train" ? (pick.line === "1" ? "#28a05a" : "#3aa0d8")
     : pick.kind === "bus" ? (/\bLine$/.test(pick.route) ? "#e06056" : "#9a8cf0")
     : pick.kind === "ferry" ? "#78aacd"
@@ -713,13 +729,15 @@ function TransitCard({ pick, onClose }: { pick: TransitPick; onClose: () => void
   return (
     <div style={{ position: "absolute", left: 16, bottom: 160, minWidth: 184,
       background: "rgba(8,12,20,0.92)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12,
-      padding: "12px 14px", color: "#dfe7f2" }}>
+      padding: "12px 14px", color: "#dfe7f2", filter: night ? "brightness(0.82) saturate(0.9)" : undefined }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <span style={{ width: 10, height: 10, borderRadius: "50%", background: lineColor, flex: "none" }} />
           <span style={{ font: "700 16px system-ui", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</span>
         </div>
-        <button onClick={onClose} style={{ background: "none", border: "none", color: "#8c98a8", font: "600 14px system-ui", cursor: "pointer", flex: "none" }}>✕</button>
+        <button onClick={onClose} aria-label="Close" style={{ background: "none", border: "none", color: "#9aa6b6",
+          cursor: "pointer", flex: "none", width: 34, height: 34, display: "grid", placeItems: "center",
+          font: "600 16px system-ui", marginRight: -6 }}>✕</button>
       </div>
       <div style={{ font: "500 11px system-ui", color: "#9fb0c2", marginTop: 4 }}>{sub}</div>
       {detail && <div style={{ font: "600 13px system-ui", marginTop: 8 }}>{detail}</div>}
@@ -782,5 +800,15 @@ function autoHide(visible: boolean): CSSProperties {
     opacity: visible ? 1 : 0,
     transition: "opacity 0.45s ease",
     pointerEvents: visible ? "auto" : "none",
+  };
+}
+
+// Like autoHide, but never fully disappears: it settles to a faint resting presence and stays
+// hit-testable — for the mute/settings cluster, which must always be findable at a bedside (P0-1).
+function autoHidePersist(visible: boolean): CSSProperties {
+  return {
+    opacity: visible ? 1 : 0.12,
+    transition: "opacity 0.45s ease",
+    pointerEvents: "auto",
   };
 }
