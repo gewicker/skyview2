@@ -1,48 +1,82 @@
 #!/usr/bin/env bash
-# Run ON the Pi. Sets up the SECOND SDR for 978 MHz UAT (dump978-fa) alongside the existing
-# 1090 MHz dump1090-fa, and serves its aircraft.json on :8081 for the SkyView server to merge.
+# Run ON the Pi. Sets up the SECOND SDR for 978 MHz UAT on the NATIVE librtlsdr path
+# (rtl_sdr | dump978 | uat2json) — the SAME driver stack that already decodes 1090 — NOT SoapySDR.
 #
-# SAFETY: this script is ADDITIVE. It never edits the working dump1090-fa service, so it cannot break
-# the primary 1090 feed. It does NOT set SDR serials or rebind dump1090 — do those MANUALLY per
-# docs/DUAL-SDR-978.md (rebinding the wrong serial WOULD break 1090, so it's kept out of automation).
+# WHY NATIVE (decided 2026-07-09): FlightAware's dump978-fa talks to the radio ONLY through
+# SoapySDR's rtlsdr module, and on this Pi that path never locks the tuner PLL — it opens the
+# dongle, streams, but decodes ZERO UAT frames. Proven on BOTH dongles (including the known-good
+# 1090 stick), so it's the SoapySDR layer, not the hardware. dump1090 works because it uses native
+# librtlsdr. So we decode UAT with mutability/dump978 fed by native `rtl_sdr`, sidestepping SoapySDR
+# entirely. Bonus: mutability/dump978 also builds `extract_nexrad` — the FIS-B NEXRAD decoder the
+# off-air weather pipeline needs (see pi-setup/install-fisb.sh).
 #
-# Prereq (manual, once): this Pi's two Nooelec dongles already have unique factory serials
-#   (rtl_test → 95371368 and 53037501), so NO rtl_eeprom rewrite is needed. Just bind the 1090 decoder
-#   to its serial: add `--device 95371368` to dump1090-fa.service and restart it (then verify
-#   aircraft.json still flows). See docs/DUAL-SDR-978.md.
-# VERIFY the dump978-fa flags below against your build (`dump978-fa --help`).
+# SAFETY: ADDITIVE. Never edits the working dump1090-fa service. Binds THIS SDR by serial so it can
+# never grab the 1090 dongle. The dump1090 serial rebind stays MANUAL (docs/DUAL-SDR-978.md) — that's
+# the one step that can disturb the working 1090 feed.
 set -euo pipefail
 
-UAT_SERIAL="${UAT_SERIAL:-53037501}"  # this Pi's 2nd Nooelec dongle (rtl_test SN); override if you swap dongles
+UAT_SERIAL="${UAT_SERIAL:-53037501}"   # 2nd Nooelec (rtl_test SN). rtl_sdr -d matches by serial
+                                       # when the string isn't a valid device index (same as dump1090's --device).
+UAT_GAIN="${UAT_GAIN:-48.0}"           # near-max fixed gain suits UAT; tune later if the front-end overloads.
+UAT_PPM="${UAT_PPM:-0}"                # frequency correction (ppm) if you've measured it.
+JSON_DIR="${JSON_DIR:-/run/dump978}"   # where uat2json writes aircraft.json (served on :8081).
+SRC="${SRC:-/tmp/dump978-mut}"
 
-echo "==> dump978-fa + skyaware978 (978 UAT decoder + aircraft.json writer)"
-# The flightaware/dump978 repo builds BOTH: dump978-fa (decoder) and skyaware978 (reads the raw
-# stream, tracks aircraft, writes aircraft.json) — so the full pipeline is self-contained, no
-# separate package. Rebuild if either binary is missing (deps are cached, so re-runs are quick).
-if ! command -v dump978-fa >/dev/null 2>&1 || ! command -v skyaware978 >/dev/null 2>&1; then
-  echo "    installing build deps (boost + SoapySDR + rtlsdr)…"
-  # dump978-fa reads the radio via SoapySDR (its --sdr flag is driver=rtlsdr,…), so it needs the
-  # SoapySDR headers to BUILD and the rtlsdr Soapy MODULE to actually open the dongle at runtime.
-  sudo apt-get update -qq || true
-  sudo apt-get install -y build-essential libboost-system-dev libboost-program-options-dev \
-    libboost-regex-dev libboost-filesystem-dev librtlsdr-dev libsoapysdr-dev soapysdr-module-rtlsdr
-  S=/tmp/dump978; rm -rf "$S"
-  git clone --depth 1 https://github.com/flightaware/dump978 "$S"
-  make -C "$S"
-  sudo install -m755 "$S/dump978-fa" /usr/local/bin/dump978-fa
-  sudo install -m755 "$S/skyaware978" /usr/local/bin/skyaware978
+echo "==> deps (NATIVE rtl-sdr + build tools — no Boost, no SoapySDR)"
+sudo apt-get update -qq || true
+sudo apt-get install -y build-essential librtlsdr-dev rtl-sdr
+
+echo "==> build mutability/dump978  (dump978 + uat2json + uat2text + extract_nexrad)"
+# Rebuild only if a binary is missing (fast re-runs). This is the ORIGINAL dump978 that reads 8-bit
+# I/Q on stdin — the classic native chain, not the SoapySDR reimplementation.
+if ! command -v dump978 >/dev/null 2>&1 || ! command -v uat2json >/dev/null 2>&1 \
+   || ! command -v extract_nexrad >/dev/null 2>&1; then
+  rm -rf "$SRC"
+  git clone --depth 1 https://github.com/mutability/dump978 "$SRC"
+  make -C "$SRC"
+  sudo install -m755 "$SRC/dump978"        /usr/local/bin/dump978
+  sudo install -m755 "$SRC/uat2json"       /usr/local/bin/uat2json
+  sudo install -m755 "$SRC/uat2text"       /usr/local/bin/uat2text
+  sudo install -m755 "$SRC/extract_nexrad" /usr/local/bin/extract_nexrad
 fi
-sudo mkdir -p /run/dump978
+sudo mkdir -p "$JSON_DIR"
 
-echo "==> dump978-fa.service (decode on serial $UAT_SERIAL → raw stream on :30978)"
-sudo tee /etc/systemd/system/dump978-fa.service >/dev/null <<EOF
+echo "==> retire the SoapySDR path if it's present (it never locked the PLL on this Pi)"
+# Old dump978-fa/skyaware978 units, if a previous install created them, are disabled so they don't
+# fight for the dongle. Harmless if they don't exist.
+sudo systemctl disable --now dump978-fa.service skyaware978.service 2>/dev/null || true
+
+echo "==> wrapper /usr/local/bin/skyview-uat978.sh  (rtl_sdr -> dump978 -> uat2json)"
+sudo tee /usr/local/bin/skyview-uat978.sh >/dev/null <<'WRAP'
+#!/usr/bin/env bash
+# Native UAT traffic pipeline. rtl_sdr streams 8-bit I/Q at the UAT sample rate into dump978 (demod),
+# whose frames feed uat2json (writes aircraft.json). pipefail so a dead stage fails the unit -> restart.
+# NOTE: install-fisb.sh REPLACES this wrapper with a tee'd version that also feeds extract_nexrad for
+# off-air weather; this traffic-only form is the safe first stage (bring up + prove reception first).
+set -euo pipefail
+UAT_SERIAL="${UAT_SERIAL:-53037501}"
+UAT_GAIN="${UAT_GAIN:-48.0}"
+UAT_PPM="${UAT_PPM:-0}"
+JSON_DIR="${JSON_DIR:-/run/dump978}"
+mkdir -p "$JSON_DIR"
+# rtl_sdr -d matches by serial; -f 978 MHz; -s 2083334 = UAT rate; '-' = raw I/Q to stdout.
+rtl_sdr -d "$UAT_SERIAL" -f 978000000 -s 2083334 -g "$UAT_GAIN" -p "$UAT_PPM" - \
+  | dump978 \
+  | uat2json "$JSON_DIR"
+WRAP
+sudo chmod +x /usr/local/bin/skyview-uat978.sh
+
+echo "==> skyview-uat978.service (the native UAT pipeline)"
+sudo tee /etc/systemd/system/skyview-uat978.service >/dev/null <<EOF
 [Unit]
-Description=dump978-fa UAT (978 MHz) decoder
+Description=SkyView 978 UAT (native rtl_sdr | dump978 | uat2json)
 After=network.target
 [Service]
-# --sdr binds THIS SDR by serial so it never grabs the 1090 dongle. Raw UAT frames go to :30978,
-# which skyaware978 consumes. (Verify flags with 'dump978-fa --help' if your build differs.)
-ExecStart=/usr/local/bin/dump978-fa --sdr driver=rtlsdr,serial=$UAT_SERIAL --raw-port 30978
+Environment=UAT_SERIAL=$UAT_SERIAL UAT_GAIN=$UAT_GAIN UAT_PPM=$UAT_PPM JSON_DIR=$JSON_DIR
+# WX_DIR is used only after install-fisb.sh upgrades the wrapper to tee frames into the NEXRAD
+# decoder; harmless (ignored) in this traffic-only stage. Must match the server's WXRADAR_DIR.
+Environment=WX_DIR=/run/dump978/wx
+ExecStart=/usr/local/bin/skyview-uat978.sh
 # Low priority: the 978 SDR must yield to the bedside display + the primary 1090 decode.
 Nice=10
 Restart=always
@@ -51,43 +85,30 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-echo "==> skyaware978.service (raw :30978 → /run/dump978/aircraft.json)"
-sudo tee /etc/systemd/system/skyaware978.service >/dev/null <<'EOF'
-[Unit]
-Description=skyaware978 UAT tracker (writes aircraft.json)
-After=dump978-fa.service
-Requires=dump978-fa.service
-[Service]
-ExecStartPre=/bin/mkdir -p /run/dump978
-# --json-dir (NOT --output) is the correct flag for skyaware978.
-ExecStart=/usr/local/bin/skyaware978 --connect localhost:30978 --reconnect-interval 30 --json-dir /run/dump978
-Nice=10
-Restart=always
-RestartSec=5
-[Install]
-WantedBy=multi-user.target
-EOF
-
-echo "==> aircraft.json server on :8081 (mirrors the dump1090-json pattern)"
-sudo tee /etc/systemd/system/dump978-json.service >/dev/null <<'EOF'
+echo "==> dump978-json.service (serve aircraft.json on :8081 for the SkyView server to merge)"
+sudo tee /etc/systemd/system/dump978-json.service >/dev/null <<EOF
 [Unit]
 Description=Serve dump978 aircraft.json on :8081
-After=skyaware978.service
+After=skyview-uat978.service
 [Service]
-ExecStartPre=/bin/mkdir -p /run/dump978
-ExecStart=/usr/bin/python3 -m http.server 8081 --directory /run/dump978
+ExecStartPre=/bin/mkdir -p $JSON_DIR
+ExecStart=/usr/bin/python3 -m http.server 8081 --directory $JSON_DIR
 Restart=always
 [Install]
 WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now dump978-fa.service skyaware978.service dump978-json.service || true
+sudo systemctl enable --now skyview-uat978.service dump978-json.service || true
 
 echo
-echo "978 UAT pipeline installed (dump978-fa → skyaware978 → :8081). Next:"
-echo "  1) Bind dump1090 to serial 95371368 (docs/DUAL-SDR-978.md) so the two SDRs don't fight."
-echo "  2) Check:  systemctl status dump978-fa skyaware978 --no-pager"
-echo "            curl -s localhost:8081/aircraft.json | head -c 300"
-echo "     The SkyView server merges :8081 automatically — UAT traffic will just appear."
-echo "  3) FIS-B off-air weather (NEXRAD) is Phase 2 — see docs/DUAL-SDR-978.md."
+echo "978 UAT (native) installed. Verify:"
+echo "  1) Reception (decoded UAT — uplink FIS-B is continuous, downlink aircraft are sparse):"
+echo "       sudo systemctl stop skyview-uat978"
+echo "       rtl_sdr -d $UAT_SERIAL -f 978000000 -s 2083334 -g $UAT_GAIN - | dump978 | uat2text | head"
+echo "       sudo systemctl start skyview-uat978"
+echo "     Look for 'PLL not locked' to be GONE and decoded messages to scroll. (No SoapySDR now.)"
+echo "  2) Traffic JSON:  curl -s localhost:8081/aircraft.json | head -c 300"
+echo "     The SkyView server merges :8081 automatically — UAT/TIS-B contacts just appear."
+echo "  3) Bind dump1090 to serial 95371368 (docs/DUAL-SDR-978.md) so the two SDRs never fight."
+echo "  4) Off-air NEXRAD weather: run pi-setup/install-fisb.sh (adds extract_nexrad + the raster decoder)."

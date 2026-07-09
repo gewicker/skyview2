@@ -46,6 +46,15 @@ type rawAircraft struct {
 	IAS      *float64        `json:"ias"`
 	TAS      *float64        `json:"tas"`
 	Mach     *float64        `json:"mach"`
+
+	// --- Legacy dump1090 / mutability uat2json field names ---------------------------------------
+	// The native 978 UAT chain (rtl_sdr | dump978 | uat2json) emits the OLD dump1090 schema:
+	// "altitude" (ft) / "speed" (kts) / "vert_rate" (ft/min) instead of readsb's alt_baro/gs/baro_rate.
+	// Parsed as fallbacks only — readsb/1090 and airplanes.live feeds never set these, so there's no
+	// conflict; they just fill in altitude/speed/climb for UAT contacts that would otherwise be bare.
+	AltitudeLegacy *float64 `json:"altitude"`
+	SpeedLegacy    *float64 `json:"speed"`
+	VertRateLegacy *float64 `json:"vert_rate"`
 }
 
 func ptr(f float64) *float64 { return &f }
@@ -73,15 +82,24 @@ func normalize(raw rawAircraft) *aircraft.Aircraft {
 	if raw.SeenPos != nil && *raw.SeenPos > 60 {
 		return nil
 	}
+	// Fall back to the legacy uat2json field names when the readsb ones are absent (978 UAT feed).
+	gs := raw.GS
+	if gs == nil {
+		gs = raw.SpeedLegacy
+	}
+	baroRate := raw.BaroRate
+	if baroRate == nil {
+		baroRate = raw.VertRateLegacy
+	}
 	ac := &aircraft.Aircraft{
 		Hex:          raw.Hex,
 		Flight:       trimFlight(raw.Flight),
 		Lat:          raw.Lat,
 		Lon:          raw.Lon,
 		AltGeom:      raw.AltGeom,
-		GS:           raw.GS,
+		GS:           gs,
 		Track:        raw.Track,
-		BaroRate:     raw.BaroRate,
+		BaroRate:     baroRate,
 		Squawk:       raw.Squawk,
 		Registration: raw.Reg,
 		TypeCode:     raw.Type,
@@ -108,6 +126,11 @@ func normalize(raw rawAircraft) *aircraft.Aircraft {
 		if err := json.Unmarshal(raw.AltBaro, &alt); err == nil {
 			ac.AltBaro = ptr(alt)
 		}
+	}
+	// Legacy uat2json has no alt_baro; use its "altitude" so UAT contacts get a real height (and the
+	// low/slow surface heuristic below can act on it) rather than defaulting to airborne with no alt.
+	if ac.AltBaro == nil && !ac.OnGround && raw.AltitudeLegacy != nil {
+		ac.AltBaro = raw.AltitudeLegacy
 	}
 	// Low + slow with no "ground" string → still treat as a surface contact, so it doesn't reach
 	// the client's airborne dead-reckoner (which would fling it across the ramp between fixes).
