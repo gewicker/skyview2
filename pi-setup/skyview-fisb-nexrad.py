@@ -41,19 +41,23 @@ except ImportError:
 # the image exactly. Default covers the Puget Sound display area with margin; override via --bounds. ---
 DEFAULT_BOUNDS = (49.0, 45.5, -119.5, -125.0)  # north, south, east, west
 
-# dBZ color ramp by FIS-B 3-bit intensity. 0/1 are "no/def. light precip or empty-block synthesis"
-# (extract_nexrad fills empty blocks with 0 for Regional, 1 for CONUS) -> transparent so the map isn't
-# washed. Precip shows from MIN_INTENSITY up. Alpha is full here; the client applies radarOpacity (~0.55)
-# on top, so precip stays a translucent tint that aircraft still paint brightly over.
+# dBZ ramp by FIS-B 3-bit intensity. COOL & calm by design (per the design review): it coheres with the
+# online radar's cool "Universal Blue" ramp, so a source flip (off-air <-> online) is nearly invisible,
+# and it keeps warmth reserved for only the heaviest cells so precip never becomes a saturated blob that
+# fights "aircraft are the brightest thing" or wrecks night/red modes. 0/1 (empty-block synthesis:
+# Regional=0, CONUS=1) stay transparent so the map isn't washed. Alpha is ramped so drizzle stays faint;
+# the client then applies radarOpacity on top, keeping precip a translucent tint aircraft paint over.
+# (A later pass moves palette selection client-side for true per-night-mode recolor; this cool ramp is the
+# calm, mode-agnostic baseline.)
 RAMP = {
-    2: (100, 200, 100, 255),   # 20-30 dBZ  light green
-    3: (0, 160, 0, 255),       # 30-40      green
-    4: (255, 232, 90, 255),    # 40-45      yellow
-    5: (255, 160, 0, 255),     # 45-50      orange
-    6: (230, 40, 40, 255),     # 50-55      red
-    7: (220, 60, 220, 255),    # 55+        magenta
+    2: (46, 90, 120, 130),     # 20-30 dBZ  steel blue
+    3: (40, 120, 130, 160),    # 30-40      teal
+    4: (60, 160, 150, 190),    # 40-45      green-cyan
+    5: (130, 175, 120, 210),   # 45-50      muted green
+    6: (210, 175, 90, 235),    # 50-55      soft amber
+    7: (205, 120, 110, 255),   # 55+        muted coral (warmth only for the worst cells)
 }
-FAINT_L1 = (140, 220, 140, 200)  # used only if --min-intensity 1
+FAINT_L1 = (70, 110, 130, 110)  # faint steel; used only if --min-intensity 1
 
 
 def norm_lon(deg):
