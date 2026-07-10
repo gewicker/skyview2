@@ -26,6 +26,7 @@ import os
 import sys
 import time
 import json
+import math
 import threading
 import argparse
 from datetime import datetime, timezone
@@ -64,15 +65,22 @@ def norm_lon(deg):
     return deg
 
 
+def merc_y(lat_deg):
+    """Web-Mercator ordinate (unitless). Painting the raster in this y makes the client's linear
+    corner-affine EXACT (the map is Mercator); a plain equirectangular raster mis-registers by a few
+    km mid-latitude and blows up over tall regions (CONUS)."""
+    return math.log(math.tan(math.pi / 4.0 + math.radians(lat_deg) / 2.0))
+
+
 def product_time_ms(hh, mm, now=None):
-    """extract_nexrad gives only hh:mm (UTC). Anchor to today's UTC date; if that lands in the future
-    (clock just past midnight, product from before), roll back a day."""
+    """extract_nexrad gives only hh:mm (UTC), no date. Anchor hh:mm to the UTC date that puts it NEAREST
+    to now — checking yesterday/today/tomorrow. Symmetric, so it's correct across the midnight boundary in
+    both directions (off-air => no NTP, so the receiver clock may lead or lag the product time)."""
     now = now or datetime.now(timezone.utc)
-    t = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-    ts = t.timestamp()
-    if ts - now.timestamp() > 90 * 60:  # more than 90 min in the future -> product is from yesterday
-        ts -= 86400
-    return int(ts * 1000)
+    base = now.replace(hour=hh, minute=mm, second=0, microsecond=0).timestamp()
+    now_ts = now.timestamp()
+    best = min((base + off for off in (-86400, 0, 86400)), key=lambda ts: abs(ts - now_ts))
+    return int(best * 1000)
 
 
 class Canvas:
@@ -84,6 +92,8 @@ class Canvas:
         self.kinds = kinds  # set of {"regional","conus"}
         self.w_px = max(64, int(round((self.e - self.w) * px_per_deg)))
         self.h_px = max(64, int(round((self.n - self.s) * px_per_deg)))
+        self.mN = merc_y(self.n)   # Mercator y of the north/south bounds, for exact-registration paint
+        self.mS = merc_y(self.s)
         self.lock = threading.Lock()
         # block key (north,west,height,width,kind) -> (recv_ts, product_ms, [128 ints])
         self.blocks = {}
@@ -96,26 +106,28 @@ class Canvas:
             self.blocks[key] = (time.time(), product_time_ms(hh, mm), bins)
 
     def _lonlat_to_px(self, lon, lat):
+        # x linear in lon (Mercator x is linear in lon -> exact); y in Mercator so the client affine is exact.
         x = (lon - self.w) / (self.e - self.w) * self.w_px
-        y = (self.n - lat) / (self.n - self.s) * self.h_px
+        y = (self.mN - merc_y(lat)) / (self.mN - self.mS) * self.h_px
         return x, y
 
     def render_and_write(self):
         cutoff = time.time() - self.expire_s
         with self.lock:
-            # drop stale blocks
+            # drop stale blocks, then snapshot (key,val) UNDER the lock so add() can't mutate mid-iterate
             live = {k: v for k, v in self.blocks.items() if v[0] >= cutoff}
             self.blocks = live
-            items = list(live.values())
-        if not items:
+            snapshot = list(live.items())
+        if not snapshot:
             return False  # nothing fresh -> leave the contract empty (server returns {}, map uses online)
 
         img = Image.new("RGBA", (self.w_px, self.h_px), (0, 0, 0, 0))
         px = img.load()
         latest = 0
-        for _recv, pms, bins in items:
+        painted = 0
+        for _key, (_recv, pms, _bins) in snapshot:
             latest = max(latest, pms)
-        for key, (_recv, _pms, bins) in list(live.items()):
+        for key, (_recv, _pms, bins) in snapshot:
             north_am, west_am, height_am, width_am, _kind = key
             north = north_am / 60.0
             west = norm_lon(west_am / 60.0)
@@ -144,7 +156,13 @@ class Canvas:
                 for yy in range(ya, yb + 1):
                     for xx in range(xa, xb + 1):
                         px[xx, yy] = color
+                        painted += 1
 
+        if not painted:
+            # Only empty/sub-threshold blocks (coverage but no precip). Don't publish a fully-transparent
+            # product — that would mark the whole region "fresh off-air" and suppress the online radar
+            # while showing nothing. Leave the contract as-is so the map falls back to online radar.
+            return False
         self._write_atomic(img, latest)
         return True
 
@@ -228,9 +246,14 @@ def main():
                      % (args.out, bounds, sorted(kinds)))
     try:
         for line in sys.stdin:
-            rec = parse_line(line.strip())
-            if rec:
-                canvas.add(*rec)
+            # Guard per-line: a parse/add exception must never break the stdin drain — if this loop dies,
+            # the upstream pipe backpressures and the whole pipeline stalls.
+            try:
+                rec = parse_line(line.strip())
+                if rec:
+                    canvas.add(*rec)
+            except Exception as e:
+                sys.stderr.write("skyview-fisb-nexrad: line error: %s\n" % e)
     except KeyboardInterrupt:
         pass
     finally:

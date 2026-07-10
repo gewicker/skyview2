@@ -71,6 +71,10 @@ sudo tee /etc/systemd/system/skyview-uat978.service >/dev/null <<EOF
 [Unit]
 Description=SkyView 978 UAT (native rtl_sdr | dump978 | uat2json)
 After=network.target
+# Stop thrashing on a hard fault (dongle unplugged, wrong serial): after 5 restarts in 60s the unit
+# enters 'failed' and surfaces in status instead of restart-looping every 5s forever.
+StartLimitIntervalSec=60
+StartLimitBurst=5
 [Service]
 Environment=UAT_SERIAL=$UAT_SERIAL UAT_GAIN=$UAT_GAIN UAT_PPM=$UAT_PPM JSON_DIR=$JSON_DIR
 # WX_DIR is used only after install-fisb.sh upgrades the wrapper to tee frames into the NEXRAD
@@ -79,6 +83,10 @@ Environment=WX_DIR=/run/dump978/wx
 ExecStart=/usr/local/bin/skyview-uat978.sh
 # Low priority: the 978 SDR must yield to the bedside display + the primary 1090 decode.
 Nice=10
+# Confine the whole UAT DSP chain to cores 2-3 so it can never crowd the display/Go on 0-1 (Pi 5 = 4
+# cores). Tunable/removable; the chain is ~1 core total so 2 cores is ample. NOT CPUQuota — throttling
+# dump978 below real-time drops UAT samples rather than saving anything useful.
+CPUAffinity=2 3
 Restart=always
 RestartSec=5
 [Install]
@@ -92,7 +100,9 @@ Description=Serve dump978 aircraft.json on :8081
 After=skyview-uat978.service
 [Service]
 ExecStartPre=/bin/mkdir -p $JSON_DIR
-ExecStart=/usr/bin/python3 -m http.server 8081 --directory $JSON_DIR
+# --bind 127.0.0.1: the SkyView server reads this over localhost, so there's no reason to expose
+# aircraft.json LAN-wide (http.server otherwise binds 0.0.0.0).
+ExecStart=/usr/bin/python3 -m http.server 8081 --bind 127.0.0.1 --directory $JSON_DIR
 Restart=always
 [Install]
 WantedBy=multi-user.target

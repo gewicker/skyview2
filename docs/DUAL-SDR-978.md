@@ -1,5 +1,15 @@
 # Second SDR — 978 MHz UAT + FIS-B off-air weather
 
+> **STATUS (2026-07-09): the RF front end went NATIVE — parts of the "how" below are superseded.**
+> `dump978-fa` decodes only via SoapySDR, and on this Pi that path **never locks the tuner PLL** (zero
+> frames on both dongles, including the known-good 1090 stick). The shipped path is the **native
+> `rtl_sdr | dump978 | uat2json`** chain (mutability/dump978) — the same driver stack that decodes 1090 —
+> which also builds **`extract_nexrad`**, the FIS-B NEXRAD decoder. See `RELEASE-NOTES-v7.md`,
+> `docs/RADIO-INTEGRATION-EXPERT-REVIEW.md`, and `pi-setup/install-978.sh` + `install-fisb.sh` for the
+> current build. The **concepts** below (serial binding, the UAT merge, the FIS-B pipeline shape) still
+> hold; ignore the specific `dump978-fa`/SoapySDR commands and the placeholder `0000xxxx` serials — the
+> real factory serials are `95371368` (1090) and `53037501` (978).
+
 A second (identical) RTL-SDR was added. The first decodes **1090 MHz ES ADS-B** (`dump1090-fa` →
 `aircraft.json` on :8080). The second is for **978 MHz UAT**, which carries two things:
 
@@ -87,8 +97,10 @@ raster→tile vs raster→grid transport; refresh cadence (FIS-B NEXRAD updates 
 ---
 
 ## Runbook
-1. Pin serials (above); bind dump1090 to `00001090`.
-2. Stand up the 978 decoder serving `aircraft.json` on :8081 (skyaware978, or `install-978.sh`).
+1. Pin serials (above); bind dump1090 to its real serial `95371368` (manual; the one step that can
+   disturb the working 1090 feed — verify aircraft still flow, revert if not).
+2. Stand up the 978 decoder serving `aircraft.json` on :8081 — `sudo bash pi-setup/install-978.sh`
+   (native `rtl_sdr | dump978 | uat2json`, bound to serial `53037501`).
 3. Deploy the server (UAT merge is already in `main.go`); confirm UAT traffic appears and
    `journalctl -u skyview` shows the "978 UAT source at …" line.
 4. Later: build the FIS-B → `/api/wxradar` → `RadarLayer` weather pipeline (Phase 2).

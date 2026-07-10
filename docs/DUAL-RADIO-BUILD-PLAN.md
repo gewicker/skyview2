@@ -1,5 +1,12 @@
 # Dual-Radio Build Plan — maximize both SDRs (1090 ES + 978 UAT)
 
+> **UPDATE (2026-07-09): the 978 RF front end went NATIVE; Phase 0–1 mechanics below are superseded.**
+> `dump978-fa`/SoapySDR would not lock the tuner PLL on this Pi, so 978 now runs the native
+> `rtl_sdr | dump978 | uat2json` chain (which also builds `extract_nexrad`, the FIS-B NEXRAD decoder).
+> The **sequencing and design intent here still hold**; for the actual commands see
+> `pi-setup/install-978.sh` + `install-fisb.sh`, `RELEASE-NOTES-v7.md`, and the six-lens
+> `docs/RADIO-INTEGRATION-EXPERT-REVIEW.md`.
+
 Goal: make **both** RTL-SDRs earn their keep. SDR1 (1090 ES, `dump1090-fa`) already carries the
 airliner traffic. SDR2 (978 UAT, `dump978-fa` + `skyaware978`, built + parked) should add (a) **UAT
 air traffic** — already merged server-side — and (b) the flagship: **FIS-B off-air NEXRAD weather** on

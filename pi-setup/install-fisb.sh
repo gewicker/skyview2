@@ -37,7 +37,12 @@ sudo tee /usr/local/bin/skyview-uat978.sh >/dev/null <<'WRAP'
 #!/usr/bin/env bash
 # Native UAT pipeline WITH off-air weather. One rtl_sdr owns the dongle; dump978 demods; `tee` fans the
 # frames to uat2json (aircraft.json / traffic) AND onward to extract_nexrad -> the raster decoder
-# (nexrad.png/json / weather). --output-error=warn so a hiccup in one branch never stalls the other.
+# (nexrad.png/json / weather).
+# IMPORTANT: plain `tee` (NO --output-error) is deliberate — it makes tee EXIT when either consumer dies
+# (SIGPIPE, verified), so the whole pipeline collapses -> pipefail -> systemd Restart=always brings it all
+# back in ~5s. `--output-error=warn` would instead let tee keep running with a dead traffic branch, so
+# aircraft.json would silently go stale while the unit still shows "active". Fail-fast is the safe choice
+# on an appliance. uat2json's stderr is left visible (no /dev/null) so failures surface in the journal.
 set -euo pipefail
 UAT_SERIAL="${UAT_SERIAL:-53037501}"
 UAT_GAIN="${UAT_GAIN:-48.0}"
@@ -47,7 +52,7 @@ WX_DIR="${WX_DIR:-/run/dump978/wx}"
 mkdir -p "$JSON_DIR" "$WX_DIR"
 rtl_sdr -d "$UAT_SERIAL" -f 978000000 -s 2083334 -g "$UAT_GAIN" -p "$UAT_PPM" - \
   | dump978 \
-  | tee --output-error=warn >(uat2json "$JSON_DIR" >/dev/null 2>&1) \
+  | tee >(uat2json "$JSON_DIR") \
   | extract_nexrad \
   | skyview-fisb-nexrad.py --out "$WX_DIR"
 WRAP

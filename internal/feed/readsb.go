@@ -66,7 +66,13 @@ func ptr(f float64) *float64 { return &f }
 // "ground targets spawning and moving around the map."
 func normalize(raw rawAircraft) *aircraft.Aircraft {
 	if raw.Hex == "" || strings.HasPrefix(raw.Hex, "~") {
-		return nil // no hex, or a TIS-B/ADS-R surrogate that would shadow the real airframe
+		// Drop no-hex records and "~" NON-ICAO (anonymous) addresses. Two distinct cases share the "~":
+		// ADS-R relays a direct-ADS-B airframe under its REAL ICAO hex (no "~"), so those dedupe by hex
+		// on their own — no drop needed. The "~" records are anonymous TIS-B/ADS-R: TIS-B is a secondary-
+		// radar position the ground station uplinks for its airborne clients (not a duplicate of anything
+		// we receive, but coarse, callsign-less, and only present inside a client's service volume — never
+		// for this fixed receiver). We intentionally drop them as low-quality rather than as duplicates.
+		return nil
 	}
 	// Emitter categories C1 (surface emergency), C2 (surface service), C3 (point obstacle) are
 	// ground vehicles/obstacles that drive around the ramp — not aircraft.
